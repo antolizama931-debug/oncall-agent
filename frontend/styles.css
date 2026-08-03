@@ -277,6 +277,181 @@ body { font-size: 17px; line-height: 1.65; }
 .upload-help { font-size: 12px; line-height: 1.6; }
 .knowledge-memory-card dt, .knowledge-memory-card dd { font-size: 14px; }
 
+/* 版式重构：减少装饰性留白，建立清晰的信息层级，并让控制台充分利用宽屏。 */
+.shell { width: min(1400px, calc(100% - 64px)); }
+.landing-hero {
+  min-height: 650px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 50px;
+  padding-block: 68px 76px;
+}
+.hero-copy h1 {
+  max-width: 640px;
+  margin-block: 22px 27px;
+  font-size: clamp(50px, 3.8vw, 60px);
+  line-height: 1.04;
+  letter-spacing: -.065em;
+}
+.hero-copy h1 span {
+  display: block;
+  color: var(--purple);
+  font: inherit;
+  font-style: normal;
+}
+.mobile-only-break { display: none; }
+.hero-copy > p { max-width: 620px; font-size: 17px; line-height: 1.8; }
+.hero-runtime { min-height: 430px; }
+.runtime-window { max-width: 650px; transform: none; }
+.card-source { top: -1%; left: -2%; }
+.card-policy { right: -2%; bottom: 1%; }
+
+.capability-section, .architecture-section { padding-block: 100px; }
+.section-heading { gap: 64px; margin-bottom: 38px; }
+.section-heading h2 { font-size: clamp(40px, 3.5vw, 54px); line-height: 1.08; }
+.section-heading > p { max-width: 500px; font-size: 16px; line-height: 1.75; }
+.capability-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  border: 0;
+}
+.cap-card {
+  min-height: 275px;
+  padding: 25px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(255,255,255,.56);
+}
+.cap-icon { margin-bottom: 25px; }
+.cap-card h3 { margin: 11px 0; font-size: 23px; line-height: 1.25; }
+.cap-card p { font-size: 15px; line-height: 1.7; }
+.cap-card footer { padding-top: 17px; font-family: var(--sans); font-size: 13px; }
+
+.incident-section { padding-block: 96px; }
+.landing-incidents { gap: 18px; }
+.incident-preview { min-height: 430px; padding: 25px; }
+.incident-title-block { min-width: 0; }
+.incident-title-label {
+  display: block;
+  margin-top: 25px;
+  color: #8e849b;
+  font: 650 11px var(--mono);
+  letter-spacing: .06em;
+}
+.incident-preview h3 { margin: 9px 0 13px; font-size: 21px; line-height: 1.35; }
+.incident-summary-cn {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: #b1a9ba;
+  font-size: 15px;
+  line-height: 1.75;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.original-incident { margin-top: 13px; }
+.original-incident summary {
+  width: fit-content;
+  color: #c6b8ff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.original-incident p { margin: 9px 0 0; color: #8d8497; font-size: 13px; line-height: 1.65; }
+.incident-facts span { font-family: var(--sans); font-size: 13px; }
+.incident-open, .wide-link { font-size: 14px; }
+
+.architecture-flow { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.architecture-flow > i { display: none; }
+.arch-node {
+  min-height: 150px;
+  justify-content: center;
+  padding: 22px;
+}
+.arch-node > span { margin-bottom: 25px; font-size: 12px; }
+.arch-node b { margin-top: 0; font-size: 12px; overflow-wrap: anywhere; }
+.arch-node small { margin-top: 8px; font-size: 13px; }
+
+.landing-cta { min-height: 300px; padding: 36px 24px; }
+.landing-cta h2 { margin: 12px 0 13px; font-size: clamp(40px, 3.6vw, 52px); line-height: 1.06; }
+.landing-cta p { margin: 0 auto 20px; color: #e2dcff; font-size: 16px; }
+.cta-actions { display: flex; justify-content: center; gap: 12px; }
+.cta-secondary { color: white; border: 1px solid rgba(255,255,255,.4); background: transparent; }
+
+.app-frame, .workbench-frame { grid-template-columns: 112px 1fr; }
+.app-sidebar { align-items: stretch; padding: 16px 10px; }
+.sidebar-brand { display: grid; place-items: center; }
+.app-sidebar nav { gap: 8px; margin-top: 46px; }
+.app-sidebar nav a,
+.sidebar-bottom button {
+  width: 100%;
+  min-height: 48px;
+  height: auto;
+  grid-template-columns: 24px 1fr;
+  justify-items: start;
+  gap: 9px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+.app-sidebar nav a.active { box-shadow: inset 3px 0 var(--purple); }
+.sidebar-bottom { gap: 9px; }
+.sidebar-online { display: flex; align-items: center; gap: 9px; padding: 8px 10px; color: #81798a; font-size: 11px; }
+.sidebar-bottom button span { font-size: 11px; }
+.app-topbar { height: 70px; padding-inline: 30px; }
+.shell-app { width: min(1440px, calc(100% - 48px)); }
+.dashboard { padding-block: 38px 64px; }
+.dashboard-heading { align-items: center; }
+.dashboard-heading h1 { margin-block: 7px 5px; font-size: 46px; }
+.dashboard-heading p { max-width: 880px; font-size: 16px; line-height: 1.7; }
+.metric-grid { gap: 16px; margin-top: 28px; }
+.metric-grid article { min-height: 132px; padding: 21px; }
+.metric-grid article > span, .metric-grid small { font-family: var(--sans); font-size: 13px; }
+.metric-grid strong { margin: 14px 0 3px; }
+.dashboard-grid { grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; margin-top: 18px; }
+.panel > header { min-height: 86px; padding: 18px 22px; }
+.panel header h2 { font-size: 21px; }
+.dashboard-incidents { padding: 4px 14px; }
+.incident-row {
+  grid-template-columns: 92px minmax(0, 1fr) 210px 104px;
+  gap: 18px;
+  min-height: 138px;
+  padding: 17px 4px;
+}
+.incident-row .incident-title-label { margin: 0 0 5px; color: #938a98; font-size: 10px; }
+.incident-row h3 {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.incident-row .incident-summary-cn {
+  margin-top: 7px;
+  color: #7b7480;
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-line-clamp: 2;
+}
+.incident-row .incident-facts { gap: 8px; }
+.incident-row footer { gap: 12px; }
+.dashboard-side { gap: 18px; }
+.runtime-brand { margin: 22px; padding: 18px; }
+.runtime-card dl { margin: 0 22px 22px; }
+.runtime-card dt, .runtime-card dd { font-size: 14px; }
+.run-item { min-height: 76px; margin-inline: 18px; }
+.run-item strong { font-size: 14px; }
+.run-item small, .run-item > span { font-size: 11px; }
+
+@media (max-width: 1280px) {
+  .capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cap-card { min-height: 250px; }
+  .app-frame, .workbench-frame { grid-template-columns: 96px 1fr; }
+  .app-sidebar nav a, .sidebar-bottom button { padding-inline: 8px; font-size: 11px; }
+  .dashboard-grid { grid-template-columns: minmax(0, 1fr) 330px; }
+  .incident-row { grid-template-columns: 84px minmax(0, 1fr) 180px 96px; gap: 13px; }
+}
+
 @media (max-width: 1120px) {
   .landing-hero { grid-template-columns: 1fr; }.hero-copy { max-width: 800px; }.hero-runtime { width: min(680px, 100%); margin: auto; }.card-source { left: 0; }.card-policy { right: 0; }
   .landing-incidents { grid-template-columns: 1fr 1fr; }.landing-incidents article:last-child { display: none; }
@@ -297,4 +472,18 @@ body { font-size: 17px; line-height: 1.65; }
   .agent-canvas { min-height: 610px; }.agent-canvas > header { padding: 20px; }.graph-source { left: 8%; top: 12%; width: 84%; }.graph-source .connector { left: 50%; right: auto; top: auto; bottom: -7px; }.graph-path { left: 8%; top: 40%; width: 84%; }.graph-path::before { display: none; }.panel-head, .incident-summary, .agent-steps, #analysis-output, .panel-actions { padding-inline: 16px; }.investigation-panel { min-width: 0; }
   .shell-wide, .knowledge-topbar-inner { width: min(calc(100% - 28px), 1320px); }.knowledge-topbar { height: 72px; }.knowledge-brand small { display: none; }.knowledge-hero h1 { font-size: 43px; }.knowledge-hero > div:last-child { font-size: 14px; }.knowledge-page { padding-top: 20px; }.knowledge-messages { height: 390px; padding-inline: 14px; }.knowledge-message > div { max-width: 86%; }.knowledge-composer form { grid-template-columns: 1fr; }.knowledge-composer form button { min-height: 46px; }.knowledge-trace { overflow-x: auto; flex-wrap: nowrap; }.knowledge-trace span { white-space: nowrap; }
 }
+@media (max-width: 560px) {
+  .hero-copy h1 { font-size: 40px; line-height: 1.08; }
+  .mobile-only-break { display: block; }
+  .hero-copy > p { font-size: 16px; line-height: 1.75; }
+  .cap-card { min-height: 240px; }
+  .incident-preview { min-height: 410px; }
+  .landing-cta { min-height: 340px; padding-block: 48px; }
+  .landing-cta h2 { font-size: 40px; }
+  .landing-cta p { font-size: 15px; }
+  .cta-actions { flex-direction: column; }
+  .cta-actions .button { width: 100%; }
+  .incident-row .incident-summary-cn { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
