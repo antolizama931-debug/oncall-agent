@@ -267,6 +267,8 @@ body { font-size: 17px; line-height: 1.65; }
 .knowledge-banner small { font-size: 11px; }
 .knowledge-stat-grid { gap: 10px; }
 .knowledge-stat-grid > div { min-height: 105px; padding: 14px; }
+.knowledge-stat-grid > div:nth-child(2),
+.knowledge-stat-grid > div:nth-child(4) { grid-column: 1 / -1; min-height: 82px; }
 .knowledge-stat-grid span { font-size: 13px; }
 .knowledge-stat-grid strong { font-size: 15px; line-height: 1.5; }
 .knowledge-document-list { max-height: 260px; overflow-y: auto; }
