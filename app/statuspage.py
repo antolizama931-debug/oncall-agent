@@ -1,4 +1,4 @@
-"""只读聚合多个官方 Atlassian Statuspage 事故源。"""
+"""只读获取 Wikimedia 官方 Statuspage 事故并提供可验证快照降级。"""
 
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ from typing import Any
 import httpx
 
 from .models import IncidentRequest, Scenario, Severity, Signal, SignalKind
-from .real_data import GITHUB_STATUS_INCIDENTS, GITHUB_STATUS_SNAPSHOT_AT
+from .real_data import WIKIMEDIA_STATUS_INCIDENTS, WIKIMEDIA_STATUS_SNAPSHOT_AT
 
 
 DEFAULT_CACHE_SECONDS = 300
-DEFAULT_SCENARIO_LIMIT = 36
-DEFAULT_PER_SOURCE_LIMIT = 12
+DEFAULT_SCENARIO_LIMIT = 20
+DEFAULT_PER_SOURCE_LIMIT = 20
 
 
 @dataclass(frozen=True)
@@ -31,29 +31,18 @@ class StatusSource:
     site_url: str
 
 
-GITHUB_SOURCE = StatusSource(
-    key="github",
-    name="GitHub Status",
-    api_url="https://www.githubstatus.com/api/v2/incidents.json",
-    site_url="https://www.githubstatus.com",
+WIKIMEDIA_SOURCE = StatusSource(
+    key="wikimedia",
+    name="Wikimedia Status",
+    api_url="https://www.wikimediastatus.net/api/v2/incidents.json",
+    site_url="https://www.wikimediastatus.net",
 )
-CLOUDFLARE_SOURCE = StatusSource(
-    key="cloudflare",
-    name="Cloudflare Status",
-    api_url="https://www.cloudflarestatus.com/api/v2/incidents.json",
-    site_url="https://www.cloudflarestatus.com",
-)
-DATADOG_SOURCE = StatusSource(
-    key="datadog",
-    name="Datadog Status",
-    api_url="https://status.datadoghq.com/api/v2/incidents.json",
-    site_url="https://status.datadoghq.com",
-)
-STATUS_SOURCES = (GITHUB_SOURCE, CLOUDFLARE_SOURCE, DATADOG_SOURCE)
+STATUS_SOURCES = (WIKIMEDIA_SOURCE,)
 
 # Backward-compatible constants used by existing integrations.
-GITHUB_STATUS_API = GITHUB_SOURCE.api_url
-GITHUB_STATUS_SITE = GITHUB_SOURCE.site_url
+GITHUB_SOURCE = WIKIMEDIA_SOURCE
+GITHUB_STATUS_API = WIKIMEDIA_SOURCE.api_url
+GITHUB_STATUS_SITE = WIKIMEDIA_SOURCE.site_url
 
 
 class StatusPageError(RuntimeError):
@@ -110,6 +99,18 @@ IMPACT_LABELS_ZH = {
 def _translate_terms(value: str) -> str:
     """翻译通用运维短语，产品名、模型名、区域代码保持不变。"""
     replacements = (
+        ("Wikipedia and other wikis", "Wikipedia 及其他 Wiki"),
+        ("Wikis", "Wiki 站点"),
+        ("wikis", "Wiki 站点"),
+        ("Connectivity issues from Russia", "俄罗斯地区连接异常"),
+        ("Ongoing network outage, users might be unable to reach the wikis", "网络中断，部分用户无法访问 Wiki 站点"),
+        ("reporting errors with edits", "编辑操作出现错误"),
+        ("were in read only mode", "进入只读模式"),
+        ("Edits to", "对"),
+        ("are delayed", "的编辑出现延迟"),
+        ("Issues and degraded performance accessing", "访问异常且性能下降："),
+        ("Reading", "页面读取"),
+        ("Editing", "内容编辑"),
         ("Copilot AI Model Providers", "Copilot AI 模型服务提供商"),
         ("AI Model Providers", "AI 模型服务提供商"),
         ("Network Performance", "网络性能"),
@@ -185,7 +186,7 @@ def incident_to_scenario(
     *,
     data_mode: str,
     fetched_at: datetime,
-    source: StatusSource = GITHUB_SOURCE,
+    source: StatusSource = WIKIMEDIA_SOURCE,
     replay_update_limit: int = 3,
 ) -> Scenario:
     """把一条公开事故转换为保留来源的早期时间线回放。"""
@@ -273,15 +274,15 @@ def incident_to_scenario(
 
 
 def snapshot_scenarios() -> list[Scenario]:
-    fetched_at = datetime.fromisoformat(GITHUB_STATUS_SNAPSHOT_AT.replace("Z", "+00:00"))
+    fetched_at = datetime.fromisoformat(WIKIMEDIA_STATUS_SNAPSHOT_AT.replace("Z", "+00:00"))
     return [
         incident_to_scenario(
             item,
             data_mode="verified-snapshot",
             fetched_at=fetched_at,
-            source=GITHUB_SOURCE,
+            source=WIKIMEDIA_SOURCE,
         )
-        for item in GITHUB_STATUS_INCIDENTS
+        for item in WIKIMEDIA_STATUS_INCIDENTS
     ]
 
 
@@ -345,7 +346,14 @@ class MultiStatusClient:
             return self._cached
 
         timeout = httpx.Timeout(10.0, connect=4.0)
-        headers = {"Accept": "application/json", "User-Agent": "oncall-agent-demo/0.4"}
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": (
+                "OnCallAgent/0.6 "
+                "(https://github.com/antolizama931-debug/oncall-agent; "
+                "antolizama931-debug@users.noreply.github.com)"
+            ),
+        }
         errors: list[str] = []
         scenarios: list[Scenario] = []
         succeeded: set[str] = set()
@@ -367,8 +375,8 @@ class MultiStatusClient:
             scenarios.extend(result)
             succeeded.add(source.key)
 
-        # GitHub 快照只在 GitHub 实时源失败时补位，且明确标记为快照。
-        if GITHUB_SOURCE in self.sources and GITHUB_SOURCE.key not in succeeded:
+        # Wikimedia 快照只在实时源失败时补位，且明确标记为快照。
+        if WIKIMEDIA_SOURCE in self.sources and WIKIMEDIA_SOURCE.key not in succeeded:
             scenarios.extend(snapshot_scenarios())
 
         if not succeeded:
@@ -389,7 +397,7 @@ class MultiStatusClient:
 
 
 class GitHubStatusClient(MultiStatusClient):
-    """兼容旧调用方的单一 GitHub Status 客户端。"""
+    """兼容旧调用方名称；实际读取 Wikimedia Status。"""
 
     def __init__(
         self,
@@ -402,6 +410,6 @@ class GitHubStatusClient(MultiStatusClient):
             cache_seconds=cache_seconds,
             scenario_limit=scenario_limit,
             per_source_limit=scenario_limit,
-            sources=(GITHUB_SOURCE,),
+            sources=(WIKIMEDIA_SOURCE,),
             transport=transport,
         )

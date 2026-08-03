@@ -54,36 +54,39 @@ Agent Run、审批、处置结果、知识候选和企业告警去重状态写�
 | `GET` | `/api/alerts` | 查看已经归一化的企业告警收件箱 |
 | `POST` | `/api/knowledge/documents` | 上传并解析 PDF、Markdown 或 TXT |
 | `GET` | `/api/knowledge/status` | 获取文档、分块和检索器状态 |
+| `POST` | `/api/knowledge/sync` | 后台同步 Wikimedia 事故复盘与 Runbook |
 | `POST` | `/api/chat` | 执行检索增强问答并写入会话记忆 |
 | `GET/DELETE` | `/api/sessions/{session_id}` | 读取或清空本次会话 |
 
 ## RAG 检索架构
 
-- 数据库边界：项目没有使用 Milvus、Qdrant、Chroma 等独立向量数据库。上传文档的提取文本与元数据保存在 SQLite；BM25 倒排信息和 BGE 向量索引在应用进程内按启动数据重建。
+- 数据库边界：项目没有使用 Milvus、Qdrant、Chroma 等独立向量数据库。上传文档的提取文本与元数据保存在 SQLite；BM25 与向量索引在应用进程内按需建立。
 - PDF 通过 `pypdf` 提取文本，Markdown/TXT 只按文本解析，不执行文档内指令。
-- 多数据源：并行同步 GitHub、Cloudflare、Datadog 官方状态页真实事故，同时接收用户上传的 PDF、Markdown 和 TXT。
+- 主生产域：Wikimedia Status、Wikitech 事故复盘和 Wikimedia Runbook，具有最高检索权重。
+- 技术补充域：Kubernetes、Prometheus、MariaDB 官方文档，只有确认组件版本后才能转化为操作建议。
+- 外部类比域：Cloudflare、Google Cloud、GitLab 事故复盘以低权重独立保存，不能直接生成 Wikimedia 生产操作。
 - 词法通道：BM25 召回故障码、服务名、命令和精确术语。
-- 语义通道：FastEmbed 运行 `BAAI/bge-small-zh-v1.5` 中文稠密向量模型，召回措辞不同但语义相近的内容。
-- 融合阶段：倒数排名融合（Reciprocal Rank Fusion, RRF）合并两路排名，避免直接相加量纲不同的 BM25 与余弦分数。
+- 语义通道：FastEmbed 运行 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`，支持中文问题检索英文 Wikimedia 文档。
+- 融合阶段：倒数排名融合（Reciprocal Rank Fusion, RRF）合并两路排名，再按来源权威度重排。
 - 可审计流程：问题识别 → 数据源路由 → 混合检索 → RRF 融合 → DeepSeek 生成 → 安全校验 → 分层会话记忆。
 - 单文件最大 5 MB，提取文本最多 250,000 字符。
-- 用户上传文档的提取文本写入 `data/knowledge.db`（SQLite），原始 PDF 二进制不保存；分块和向量索引在启动时重建。
+- 用户上传文档的提取文本写入 `data/knowledge.db`（SQLite），原始 PDF 二进制不保存；文档分块在同步时建立，向量在首次检索时按需生成，避免阻塞首屏。
 - Railway 默认文件系统在重部署时可能清空。只有将 `ONCALL_DATA_DIR` 指向 Railway Volume 挂载目录后，上传知识才能跨部署保留。
 - 会话采用“滚动摘要 + 最近 8 条原文 + 12,000 字符硬预算”。会话仍保存在进程内存，服务重启后清空；摘要只维持上下文，不作为事实证据。
 - DeepSeek 只能依据返回的知识片段生成回答；API 密钥仅存在服务端。
 
-当前没有把系统标记为智能体式检索增强生成（Agentic RAG）。三个状态页与用户文档仍适合固定、可审计的检索工作流；加入自主工具规划和反复检索循环会增加时延、成本与失控面。只有在增加日志、指标、Trace、CMDB 等异构连接器，并建立可量化检索评测集后，才适合验证 Agentic RAG 是否带来收益。
+当前实现属于“分层路由的混合检索增强生成”，不是允许模型任意抓取网页的开放式智能体检索增强生成（Agentic RAG）。固定来源、命名空间、权威等级和动作适用性均可审计；只有接入企业日志、指标、Trace、CMDB 并建立检索评测集后，才应扩大自主检索范围。
 
 ## 数据来源
 
-- 在线数据源：GitHub、Cloudflare、Datadog 的官方 Statuspage 公共接口。
-- 在线模式：每个来源最多读取 12 条，共最多 36 条最近公开事故，并缓存 5 分钟。
-- 部分降级：某一来源失败时保留其他在线来源；GitHub 失败时使用仓库内带事故 ID 和原始链接的验证快照。
+- 在线事故源：Wikimedia 官方 Statuspage JSON API，默认读取最近 20 条并缓存 5 分钟。
+- 知识源：Wikitech MediaWiki Action API，默认同步 18 份已完成或评审中的近期事故、6 份固定 Runbook，并缓存 1 小时。
+- 降级策略：Wikimedia Status 失败时使用仓库内带事故 ID 和原始链接的验证快照；Wikitech 失败时保留上游官方资料、外部低权重类比和用户上传文档。
 - 回放边界：只向智能体提供事故时间线最早的 3 条公开更新，不把后续根因分析提前泄漏给模型。
 - 来源展示：每个场景均返回 `source_name`、`source_url`、`source_incident_id`、`data_mode` 和 `fetched_at`。
 - 中文展示：API 额外返回中文标题、中文结构化摘要和中文状态更新；英文原文继续保留，用于来源核对与证据审计。
 
-这些数据只能证明相应厂商对外发布了事故信息，不能替代厂商内部日志、指标和链路追踪。模型输出是待验证假设，不是已证实根因。
+这些数据只能证明 Wikimedia 或对应上游厂商公开发布了相关信息，不能替代内部日志、指标和链路追踪。模型输出是待验证假设，不是已证实根因。
 
 ## 本地运行
 
@@ -144,7 +147,7 @@ DEEPSEEK_MAX_TOKENS=2200
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-测试覆盖：真实事故映射、HTML 清理、来源追踪、上游失败快照回退、BM25 与 BGE 中文语义召回、RRF 状态、证据引用校验、危险建议阻断、企业告警认证与去重、只读工具网关成功与降级分支、Runbook 选择、人工审批、处置演练、恢复验证、回滚分支、知识审核和 API 端到端流程。
+测试覆盖：Wikimedia 事故映射、草稿过滤、Runbook 同步、命名空间隔离、权威度重排、HTML 清理、来源追踪、上游失败快照回退、BM25 与多语言语义召回、RRF 状态、危险建议阻断、告警认证与去重、审批、处置演练、恢复验证、回滚和 API 端到端流程。
 
 ## Railway 部署
 
@@ -159,7 +162,7 @@ DEEPSEEK_MAX_TOKENS=2200
 ```powershell
 railway login
 railway init
-railway variables set ONCALL_ENV=production ONCALL_ALLOW_RULE_FALLBACK=true ONCALL_STATUS_CACHE_SECONDS=300 ONCALL_STATUS_SCENARIO_LIMIT=36 ONCALL_STATUS_PER_SOURCE_LIMIT=12 ONCALL_MAX_RUNS=100 ONCALL_MEMORY_RECENT_MESSAGES=8 ONCALL_MEMORY_SUMMARY_CHARS=2400 ONCALL_CONTEXT_MAX_CHARS=12000 ONCALL_WEBHOOK_TOKEN=请生成高强度随机值
+railway variables set ONCALL_ENV=production ONCALL_ALLOW_RULE_FALLBACK=true ONCALL_STATUS_CACHE_SECONDS=300 ONCALL_STATUS_SCENARIO_LIMIT=20 ONCALL_STATUS_PER_SOURCE_LIMIT=20 ONCALL_WIKIMEDIA_CACHE_SECONDS=3600 ONCALL_WIKIMEDIA_INCIDENT_LIMIT=18 ONCALL_MAX_RUNS=100 ONCALL_MEMORY_RECENT_MESSAGES=8 ONCALL_MEMORY_SUMMARY_CHARS=2400 ONCALL_CONTEXT_MAX_CHARS=12000 ONCALL_WEBHOOK_TOKEN=请生成高强度随机值
 railway variables set DEEPSEEK_API_KEY=你的密钥 DEEPSEEK_BASE_URL=https://api.deepseek.com DEEPSEEK_MODEL=deepseek-v4-flash DEEPSEEK_MAX_TOKENS=2200
 railway up
 railway domain
@@ -183,7 +186,7 @@ railway domain
 
 ## 安全边界
 
-- 三个官方状态页 URL 均在后端固定，不接受用户提供的主机，避免服务端请求伪造（Server-Side Request Forgery, SSRF）。
+- Wikimedia Status、Wikitech 和补充资料 URL 均由后端白名单固定，不接受用户提供的抓取主机，避免服务端请求伪造（Server-Side Request Forgery, SSRF）。
 - 外部状态文本在后端去除 HTML，前端使用 `textContent` 构建节点，避免跨站脚本（Cross-Site Scripting, XSS）。
 - 上传内容会发送给已配置的 DeepSeek API；上传前必须删除密钥、令牌、个人信息和其他敏感数据。
 - 公共应用不执行 Shell、生产数据库写入、流量切换或真实自动回滚；仅写入自身的 SQLite 审计数据。

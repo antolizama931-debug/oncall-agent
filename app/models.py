@@ -343,6 +343,10 @@ class KnowledgeDocument(BaseModel):
     media_type: str
     source_type: str = "用户上传"
     source_url: str | None = None
+    namespace: str = "user_uploads"
+    organization: str = "用户"
+    authority_level: float = Field(default=1.0, ge=0.0, le=1.0)
+    applicable_for_action: bool = False
     character_count: int = Field(ge=0)
     chunk_count: int = Field(ge=0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -359,6 +363,9 @@ class KnowledgeStatus(BaseModel):
     embedding_model: str | None = None
     retrieval_mode: str = "词法检索"
     source_types: list[str] = Field(default_factory=list)
+    namespaces: list[str] = Field(default_factory=list)
+    sync_mode: str = "not-loaded"
+    sync_error: str | None = None
 
 
 class KnowledgeCitation(BaseModel):
@@ -367,6 +374,10 @@ class KnowledgeCitation(BaseModel):
     document_name: str
     source_type: str = "用户上传"
     source_url: str | None = None
+    namespace: str = "user_uploads"
+    organization: str = "用户"
+    authority_level: float = Field(default=1.0, ge=0.0, le=1.0)
+    applicable_for_action: bool = False
     retrieval_signals: list[str] = Field(default_factory=list)
     excerpt: str
     relevance: float = Field(ge=0.0, le=1.0)

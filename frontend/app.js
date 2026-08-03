@@ -107,6 +107,8 @@ function dataModeLabel(mode) {
   return {
     live: "实时数据",
     "verified-snapshot": "已验证快照",
+    "partial-live": "部分实时数据",
+    "external-fallback": "外部资料降级",
     "not-loaded": "等待加载",
     online: "在线",
     connecting: "连接中",
@@ -124,8 +126,8 @@ function riskLabel(risk) {
 
 function toolStageLabel(tool) {
   return {
-    "github_status.read": "读取 GitHub Status 事故",
-    "statuspage.read": "读取官方状态页事故",
+    "github_status.read": "读取 Wikimedia Status 事故",
+    "statuspage.read": "读取 Wikimedia 官方事故",
     "incident.input": "读取脱敏事故输入",
     "evidence.normalize": "规范化证据",
     "diagnosis.rank": "排序根因假设",
@@ -142,13 +144,25 @@ function toolStageLabel(tool) {
 }
 
 async function api(path, options = {}) {
+  const { timeoutMs = 15000, ...fetchOptions } = options;
   const isForm = options.body instanceof FormData;
   const localHost = ["localhost", "127.0.0.1"].includes(location.hostname);
   const baseUrl = (localHost ? "" : (config.apiBaseUrl || "")).replace(/\/$/, "");
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: { ...(!isForm ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      ...fetchOptions,
+      signal: controller.signal,
+      headers: { ...(!isForm ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) },
+    });
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("服务响应超时，请稍后重试");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
   let body = null;
   try { body = await response.json(); } catch (_) { body = null; }
   if (!response.ok) throw new Error(body?.detail || `请求失败（HTTP ${response.status}）`);
@@ -156,17 +170,25 @@ async function api(path, options = {}) {
 }
 
 async function loadData() {
-  try {
-    const [health, scenarios, dashboard, runs] = await Promise.all([
-      api("/api/health"),
-      api("/api/scenarios"),
-      api("/api/dashboard"),
-      api(`/api/runs?session_id=${encodeURIComponent(state.sessionId)}`),
-    ]);
-    Object.assign(state, { health, scenarios, dashboard, runs, loading: false, error: null });
-  } catch (error) {
-    Object.assign(state, { loading: false, error: error.message });
+  // 静态页面立即可用；远程数据渐进加载，任何单个接口都不能锁死首屏。
+  state.loading = false;
+  renderRoute();
+  const [healthResult, runsResult] = await Promise.allSettled([
+    api("/api/health", { timeoutMs: 10000 }),
+    api(`/api/runs?session_id=${encodeURIComponent(state.sessionId)}`, { timeoutMs: 10000 }),
+  ]);
+  if (healthResult.status === "fulfilled") state.health = healthResult.value;
+  if (runsResult.status === "fulfilled") state.runs = runsResult.value;
+
+  const scenariosResult = await Promise.allSettled([api("/api/scenarios", { timeoutMs: 18000 })]);
+  if (scenariosResult[0].status === "fulfilled") {
+    state.scenarios = scenariosResult[0].value;
+    state.error = null;
+  } else {
+    state.error = scenariosResult[0].reason?.message || "Wikimedia 事故数据暂不可用";
   }
+  try { state.dashboard = await api("/api/dashboard", { timeoutMs: 12000 }); }
+  catch (_) { state.dashboard = null; }
   renderRoute();
 }
 
@@ -205,14 +227,14 @@ function renderLanding() {
             </div>
             <div class="runtime-result"><div><span>首要根因假设</span><strong>下游依赖服务性能下降</strong></div><b>74%</b></div>
           </div>
-          <div class="floating-card card-source"><span>${icon("database", 17)}</span><div><b>真实数据源</b><small>Statuspage API</small></div></div>
+          <div class="floating-card card-source"><span>${icon("database", 17)}</span><div><b>真实数据源</b><small>Wikimedia 官方数据</small></div></div>
           <div class="floating-card card-policy"><span>${icon("shield", 17)}</span><div><b>策略门控</b><small>低风险自动化边界</small></div></div>
         </div>
       </section>
 
       <section class="proof-row shell">
         <div><strong>${state.dashboard?.incident_count ?? "—"}</strong><span>真实事故回放</span></div>
-        <div><strong>${state.dashboard?.source_name || "3 个官方状态页"}</strong><span>公开数据源</span></div>
+        <div><strong>${state.dashboard?.source_name || "Wikimedia"}</strong><span>主生产数据域</span></div>
         <div><strong>8</strong><span>端到端工具阶段</span></div>
         <div><strong>${state.dashboard?.recovered_count ?? 0}</strong><span>已验证闭环演练</span></div>
       </section>
@@ -331,7 +353,7 @@ function renderDashboard() {
     <main class="dashboard shell-app">
       <section class="dashboard-heading"><div><span>自动响应、调查、处置与沉淀</span><h1>事故控制台</h1><p>接收真实告警，聚合证据并生成根因假设；匹配标准 Runbook 后，经过策略门控完成处置演练、恢复验证、失败回滚和复盘候选。</p></div><button class="button primary" id="new-incident">${icon("plus", 16)} 新建调查</button></section>
       <section class="metric-grid">
-        <article><span>真实事故</span><strong>${state.dashboard?.incident_count ?? state.scenarios.length}</strong><small>${state.dashboard?.source_name || "3 个官方状态页"} · ${dataModeLabel(state.dashboard?.data_mode || "—")}</small><i class="metric-icon purple">${icon("database", 20)}</i></article>
+        <article><span>真实事故</span><strong>${state.dashboard?.incident_count ?? state.scenarios.length}</strong><small>${state.dashboard?.source_name || "Wikimedia Status"} · ${dataModeLabel(state.dashboard?.data_mode || "—")}</small><i class="metric-icon purple">${icon("database", 20)}</i></article>
         <article><span>未解决事件</span><strong>${state.dashboard?.unresolved_count ?? 0}</strong><small>基于公开状态字段</small><i class="metric-icon orange">${icon("pulse", 20)}</i></article>
         <article><span>已恢复演练</span><strong>${state.dashboard?.recovered_count ?? 0}</strong><small>通过恢复条件验证</small><i class="metric-icon blue">${icon("terminal", 20)}</i></article>
         <article><span>待审批</span><strong>${state.runs.filter((run) => run.status === "awaiting-approval").length}</strong><small>批准后仍只执行安全演练</small><i class="metric-icon green">${icon("shield", 20)}</i></article>
@@ -677,7 +699,7 @@ function renderKnowledgeMessages() {
   container.innerHTML = "";
   if (!state.chatMessages.length) {
     const welcome = node("div", "knowledge-message assistant");
-    welcome.innerHTML = `<span class="message-avatar">AI</span><div><p>我是 OnCall 知识库 Agent。系统已接入 GitHub、Cloudflare、Datadog 的真实公开事故；你也可以上传 PDF、Markdown 或 TXT 文档。回答会同时使用 BM25 词法检索与 BGE 中文向量检索，并通过 RRF 融合结果。</p></div>`;
+    welcome.innerHTML = `<span class="message-avatar">AI</span><div><p>我是 OnCall 知识库 Agent。Wikimedia 事故、Runbook 和整改工单是主知识域；组件官方文档用于补充，其他企业事故仅作为低权重类比。你也可以上传 PDF、Markdown 或 TXT 文档。</p></div>`;
     container.append(welcome);
     return;
   }
@@ -690,8 +712,9 @@ function renderKnowledgeMessages() {
       const citations = node("div", "message-citations");
       message.citations.forEach((citation) => {
         const signalText = citation.retrieval_signals?.join(" + ") || "检索命中";
+        const actionLabel = citation.applicable_for_action ? "可支持操作建议" : "仅供诊断参考";
         const chip = node("span", "", `${citation.citation_id} · ${citation.source_type || citation.document_name}`);
-        chip.title = `${signalText}\n${citation.document_name}\n${citation.excerpt}`;
+        chip.title = `${signalText}\n${citation.organization || "来源未知"} · 权威度 ${Math.round((citation.authority_level || 0) * 100)}% · ${actionLabel}\n${citation.document_name}\n${citation.excerpt}`;
         citations.append(chip);
       });
       body.append(citations);
@@ -705,9 +728,17 @@ function renderKnowledgeMessages() {
 function paintKnowledgeStatus() {
   const status = state.knowledgeStatus;
   if (!status) return;
+  const namespaceLabels = {
+    wikimedia_status: "Wikimedia 实时事故",
+    wikimedia_incidents: "Wikimedia 事故复盘",
+    wikimedia_runbooks: "Wikimedia Runbook",
+    upstream_official_docs: "组件官方文档",
+    external_postmortems: "外部事故类比",
+    user_uploads: "用户上传",
+  };
   const values = {
     "#knowledge-document-count": `${status.document_count} 份 / ${status.chunk_count} 个分块`,
-    "#knowledge-types": status.source_types.length ? status.source_types.join(" · ") : "等待数据",
+    "#knowledge-types": status.namespaces?.length ? status.namespaces.map((item) => namespaceLabels[item] || item).join(" · ") : "等待数据",
     "#knowledge-retriever": status.retriever,
     "#knowledge-storage": status.storage,
     "#memory-turns": `${Math.floor(state.chatMessages.length / 2)} 轮`,
@@ -729,7 +760,7 @@ function paintKnowledgeStatus() {
     const documentIcon = node("span", "document-icon");
     documentIcon.innerHTML = icon("database", 15);
     const copy = node("div");
-    copy.append(node("strong", "", document.name), node("small", "", `${document.source_type} · ${document.chunk_count} 个分块 · ${document.character_count} 个字符`));
+    copy.append(node("strong", "", document.name), node("small", "", `${document.source_type} · ${document.organization} · 权威度 ${Math.round((document.authority_level || 0) * 100)}%`));
     row.append(documentIcon, copy);
     list.append(row);
   });
@@ -755,6 +786,14 @@ async function loadKnowledgeWorkspace() {
     api(`/api/sessions/${encodeURIComponent(state.sessionId)}`),
   ]);
   Object.assign(state, { knowledgeStatus, knowledgeDocuments, chatMessages });
+  // 页面先展示已有索引，再后台同步 Wikitech；同步慢或失败不影响提问和上传。
+  api("/api/knowledge/sync", { method: "POST", timeoutMs: 30000 }).then(async (syncedStatus) => {
+    state.knowledgeStatus = syncedStatus;
+    state.knowledgeDocuments = await api("/api/knowledge/documents", { timeoutMs: 10000 });
+    if (location.hash === "#/customer-service") paintKnowledgeStatus();
+  }).catch((error) => {
+    if (location.hash === "#/customer-service") showToast(`Wikimedia 知识同步未完成：${error.message}`, "error");
+  });
 }
 
 async function submitKnowledgeQuestion(form) {
@@ -817,16 +856,16 @@ async function renderCustomerService() {
   document.body.className = "page-knowledge";
   app.innerHTML = `<header class="knowledge-topbar"><div class="knowledge-topbar-inner"><a href="#landing">← 返回导航页</a><div class="knowledge-brand"><span>OC</span><div><strong>OnCall 知识库 Agent</strong><small>证据约束型 RAG 工作台</small></div></div><span class="runtime-pill"><i></i>Agent 运行时在线</span></div></header>
     <main class="knowledge-page shell-wide">
-      <section class="knowledge-hero"><div><span>OnCall Agent 知识工作台</span><h1>让运行知识，<br/>真正被 Agent 理解</h1></div><div><p>检索增强生成（RAG）同时读取三个官方状态页的真实事故和用户上传文档，回答保留可核对来源。</p><p>检索链路：BM25 精确召回 + BGE 中文语义召回 + RRF 排名融合；上下文采用滚动摘要、近期原文和硬字符预算。</p></div></section>
+      <section class="knowledge-hero"><div><span>OnCall Agent 知识工作台</span><h1>让运行知识，<br/>真正被 Agent 理解</h1></div><div><p>检索增强生成（RAG）以 Wikimedia 事故、Runbook 和工单为主域，回答保留原始来源、命名空间与权威等级。</p><p>检索链路：BM25 精确召回 + 多语言语义召回 + RRF 权威度重排；外部企业事故不能直接生成生产操作。</p></div></section>
       <section class="knowledge-layout">
         <article class="knowledge-chat-card">
           <header><div class="knowledge-agent-title"><span>AI</span><div><strong>OnCall 知识库 Agent</strong><small><i></i> 知识库在线</small></div></div><b>混合检索 RAG</b></header>
           <div class="knowledge-messages" id="knowledge-messages"></div>
           <section class="knowledge-trace-panel"><header><strong>RAG 执行轨迹</strong><span>准备就绪</span></header><div id="knowledge-trace" class="knowledge-trace"></div></section>
-          <section class="knowledge-composer"><h3>快捷问题</h3><div class="knowledge-prompts"><button>这个项目如何限制危险操作？</button><button>会话记忆如何工作？</button><button>混合检索采用了哪些技术？</button><button>最近的 GitHub 事故有哪些？</button></div><form id="knowledge-form"><input name="question" minlength="2" maxlength="4000" placeholder="请输入要检索的知识库问题……" autocomplete="off" required><button type="submit">发送问题 →</button></form></section>
+          <section class="knowledge-composer"><h3>快捷问题</h3><div class="knowledge-prompts"><button>Wikimedia 最近发生了哪些事故？</button><button>Wiki 编辑延迟应检查什么？</button><button>Wikimedia Runbook 如何限制危险操作？</button><button>外部事故资料何时会被使用？</button></div><form id="knowledge-form"><input name="question" minlength="2" maxlength="4000" placeholder="请输入要检索的知识库问题……" autocomplete="off" required><button type="submit">发送问题 →</button></form></section>
         </article>
         <aside class="knowledge-sidebar">
-          <section class="knowledge-status-card"><header><h2>知识库状态</h2><span>已连接</span></header><div class="knowledge-banner"><strong>Hybrid RAG</strong><small>BM25 + BGE + RRF</small></div><div class="knowledge-stat-grid"><div><span>文档与分块</span><strong id="knowledge-document-count">正在加载</strong></div><div><span>数据来源</span><strong id="knowledge-types">正在加载</strong></div><div><span>检索器</span><strong id="knowledge-retriever">正在加载</strong></div><div><span>存储方式</span><strong id="knowledge-storage">正在加载</strong></div></div><div id="knowledge-document-list" class="knowledge-document-list"></div><input id="knowledge-file" type="file" accept=".pdf,.md,.markdown,.txt" hidden><button id="upload-knowledge-button" class="knowledge-upload">上传本地知识文档</button><small class="upload-help">支持 PDF、Markdown、TXT · 单文件最大 5 MB · 提取文本写入 SQLite；Railway 跨部署保存需挂载数据卷</small></section>
+          <section class="knowledge-status-card"><header><h2>知识库状态</h2><span>分层数据域</span></header><div class="knowledge-banner"><strong>Hybrid RAG</strong><small>BM25 + Multilingual Embedding + RRF</small></div><div class="knowledge-stat-grid"><div><span>文档与分块</span><strong id="knowledge-document-count">正在加载</strong></div><div><span>数据来源</span><strong id="knowledge-types">正在加载</strong></div><div><span>检索器</span><strong id="knowledge-retriever">正在加载</strong></div><div><span>存储方式</span><strong id="knowledge-storage">正在加载</strong></div></div><div id="knowledge-document-list" class="knowledge-document-list"></div><input id="knowledge-file" type="file" accept=".pdf,.md,.markdown,.txt" hidden><button id="upload-knowledge-button" class="knowledge-upload">上传本地知识文档</button><small class="upload-help">Wikimedia 主域优先 · 外部事故仅供类比 · 支持 PDF、Markdown、TXT · 单文件最大 5 MB</small></section>
           <section class="knowledge-memory-card"><header><h2>会话记忆</h2><span>记忆已启用</span></header><dl><div><dt>会话 ID</dt><dd id="memory-session">正在创建</dd></div><div><dt>历史对话轮数</dt><dd id="memory-turns">0 轮</dd></div><div><dt>上下文策略</dt><dd>滚动摘要 + 最近 8 条</dd></div><div><dt>字符预算</dt><dd>最多 12,000 字符</dd></div><div><dt>存储边界</dt><dd>进程内存</dd></div></dl><button id="clear-memory">清空本次会话</button></section>
         </aside>
       </section>
@@ -887,7 +926,7 @@ function renderLoading() {
 
 function renderRoute() {
   if (state.loading) { renderLoading(); return; }
-  if (state.error && !state.scenarios.length) { renderError(); return; }
+  // 后端冷启动或公开数据源超时不阻断静态导航页。
   const hash = location.hash || "#landing";
   if (hash.startsWith("#/incidents/")) {
     const key = decodeURIComponent(hash.slice("#/incidents/".length));
