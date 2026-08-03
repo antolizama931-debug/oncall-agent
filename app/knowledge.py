@@ -171,6 +171,8 @@ def _scenario_text(scenario: Scenario) -> str:
     components = "、".join(scenario.components) or scenario.request.service
     return (
         f"事故标题：{scenario.title}\n"
+        f"事故中文标题：{scenario.display_title or scenario.title}\n"
+        f"中文摘要：{scenario.display_summary or '暂无'}\n"
         f"事故状态：{scenario.incident_status}\n"
         f"影响级别：{scenario.impact}\n"
         f"涉及组件：{components}\n"

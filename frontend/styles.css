@@ -359,6 +359,10 @@ body { font-size: 17px; line-height: 1.65; }
   cursor: pointer;
 }
 .original-incident p { margin: 9px 0 0; color: #8d8497; font-size: 13px; line-height: 1.65; }
+.original-incident strong { display: block; margin-top: 9px; color: #6f6875; font-size: 13px; line-height: 1.55; }
+.timeline-original { margin-top: 8px; }
+.timeline-original summary { width: fit-content; color: #9984ff; cursor: pointer; font-size: 11px; font-weight: 700; }
+.timeline-original p { margin-top: 7px; padding: 9px 11px; color: #817987; border-left: 2px solid #3b3150; background: #1b1722; font-size: 11px; line-height: 1.65; }
 .incident-facts span { font-family: var(--sans); font-size: 13px; }
 .incident-open, .wide-link { font-size: 14px; }
 
