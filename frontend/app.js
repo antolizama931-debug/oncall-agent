@@ -95,6 +95,11 @@ function statusLabel(status) {
     approved: "已批准",
     rejected: "已拒绝",
     blocked: "已阻断",
+    executing: "执行中",
+    validating: "验证中",
+    recovered: "已恢复",
+    "rolled-back": "已回滚",
+    escalated: "已升级人工",
   }[status] || status || "未知";
 }
 
@@ -126,6 +131,13 @@ function toolStageLabel(tool) {
     "diagnosis.rank": "排序根因假设",
     "citations.validate": "校验证据引用",
     "policy.gate": "执行安全门控",
+    "runbook.execute": "执行 Runbook 演练",
+    "remediation.validate": "验证恢复结果",
+    "knowledge.draft": "生成复盘候选",
+    "telemetry.metrics.query": "查询企业指标",
+    "telemetry.logs.search": "检索企业日志",
+    "telemetry.traces.search": "查询链路追踪",
+    "telemetry.changes.read": "读取最近变更",
   }[tool] || tool;
 }
 
@@ -176,9 +188,9 @@ function renderLanding() {
         <div class="hero-copy">
           <span class="eyebrow"><i></i> 真实事故响应运行时</span>
           <h1>让每一次故障，<span>都留下可验证的<br class="mobile-only-break"/>答案。</span></h1>
-          <p>OnCall Agent 从真实公开事故中提取证据，生成可证伪的根因假设，并在任何生产动作之前执行人工审批门控。</p>
+          <p>OnCall Agent 接收告警、聚合证据、定位已知故障，并通过受策略约束的 Runbook 完成处置、验证、回滚和知识沉淀。</p>
           <div class="hero-buttons"><a class="button primary" href="#home">进入事故控制台 ${icon("arrow", 16)}</a><a class="button secondary" href="#incidents">查看真实事故</a></div>
-          <div class="hero-footnote"><span>${icon("shield", 15)} 不执行生产写操作</span><span>${icon("link", 15)} 每条证据可追溯</span></div>
+          <div class="hero-footnote"><span>${icon("shield", 15)} 公开站仅执行安全演练</span><span>${icon("link", 15)} 每个判断和动作可追溯</span></div>
         </div>
         <div class="hero-runtime" aria-label="OnCall Agent 执行预览">
           <div class="runtime-window">
@@ -189,29 +201,30 @@ function renderLanding() {
               <div class="flow-line"></div>
               <div class="flow-node active"><span>02</span><div><b>诊断（Diagnose）</b><small>排序可验证根因</small></div><i></i></div>
               <div class="flow-line"></div>
-              <div class="flow-node guarded"><span>03</span><div><b>安全门控</b><small>需要人工审批</small></div><i></i></div>
+              <div class="flow-node guarded"><span>03</span><div><b>处置与验证</b><small>审批 · 回滚 · 复盘</small></div><i></i></div>
             </div>
             <div class="runtime-result"><div><span>首要根因假设</span><strong>下游依赖服务性能下降</strong></div><b>74%</b></div>
           </div>
           <div class="floating-card card-source"><span>${icon("database", 17)}</span><div><b>真实数据源</b><small>Statuspage API</small></div></div>
-          <div class="floating-card card-policy"><span>${icon("shield", 17)}</span><div><b>策略门控</b><small>禁止自动修复</small></div></div>
+          <div class="floating-card card-policy"><span>${icon("shield", 17)}</span><div><b>策略门控</b><small>低风险自动化边界</small></div></div>
         </div>
       </section>
 
       <section class="proof-row shell">
         <div><strong>${state.dashboard?.incident_count ?? "—"}</strong><span>真实事故回放</span></div>
         <div><strong>${state.dashboard?.source_name || "3 个官方状态页"}</strong><span>公开数据源</span></div>
-        <div><strong>5</strong><span>可审计工具阶段</span></div>
-        <div><strong>0</strong><span>自动生产写操作</span></div>
+        <div><strong>8</strong><span>端到端工具阶段</span></div>
+        <div><strong>${state.dashboard?.recovered_count ?? 0}</strong><span>已验证闭环演练</span></div>
       </section>
 
       <section class="capability-section shell" id="capabilities">
-        <div class="section-heading"><div><span>OnCall 控制平面</span><h2>不是聊天框，<br/>而是受约束的 Agent Runtime。</h2></div><p>观察、证据、假设、动作和授权严格分层。每个阶段都能被测试、回放和审计。</p></div>
+        <div class="section-heading"><div><span>OnCall 控制平面</span><h2>从告警进入，<br/>到恢复验证结束。</h2></div><p>目标是自动处理高频、标准化、低风险且可回滚的告警；未知事故自动收集证据并升级人工。</p></div>
         <div class="capability-grid">
-          <article class="cap-card violet"><div class="cap-icon">${icon("database", 25)}</div><span>01 / 数据连接</span><h3>真实事故连接器</h3><p>服务端并行读取 GitHub、Cloudflare、Datadog 三个官方状态页；部分源失败时明确标记降级状态。</p><footer>实时读取与事故回放 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card violet"><div class="cap-icon">${icon("bell", 25)}</div><span>01 / 自动响应</span><h3>告警接收与去重</h3><p>受认证的 Webhook 接收企业告警，并按指纹去重；重复通知只更新发生次数，不重复启动调查。</p><footer>Alert → Incident ${icon("arrow", 15)}</footer></article>
           <article class="cap-card orange"><div class="cap-icon">${icon("layers", 25)}</div><span>02 / 诊断推理</span><h3>证据约束诊断</h3><p>模型只能引用已编号证据；缺少区分性遥测时，系统明确降低置信度并请求补充数据。</p><footer>证据优先 ${icon("arrow", 15)}</footer></article>
-          <article class="cap-card blue"><div class="cap-icon">${icon("activity", 25)}</div><span>03 / 执行追踪</span><h3>完整执行轨迹</h3><p>工具调用、目的、输出摘要、时延和只读属性进入同一条 Agent Run，可直接检查。</p><footer>可观察执行循环 ${icon("arrow", 15)}</footer></article>
-          <article class="cap-card green"><div class="cap-icon">${icon("shield", 25)}</div><span>04 / 安全治理</span><h3>人工审批门控</h3><p>置信度从不等于授权。高风险建议进入审批或阻断状态，公开实例不执行任何恢复操作。</p><footer>人工保留最终控制权 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card blue"><div class="cap-icon">${icon("activity", 25)}</div><span>03 / 安全处置</span><h3>版本化 Runbook</h3><p>动作按风险分类；公开站只执行演练，企业连接器需要权限、审批、变更窗口和明确允许列表。</p><footer>策略约束执行 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card green"><div class="cap-icon">${icon("shield", 25)}</div><span>04 / 恢复验证</span><h3>验证失败自动回滚</h3><p>每次处置绑定恢复条件。指标不满足时停止继续执行、演练回滚步骤并升级人工。</p><footer>验证后才能关闭 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card rose"><div class="cap-icon">${icon("layers", 25)}</div><span>05 / 闭环沉淀</span><h3>待审核复盘候选</h3><p>自动整理证据、根因、动作和验证结果；审核通过后才允许进入正式知识库。</p><footer>越用越准，不污染知识库 ${icon("arrow", 15)}</footer></article>
         </div>
       </section>
 
@@ -222,9 +235,9 @@ function renderLanding() {
       </div></section>
 
       <section class="architecture-section shell" id="architecture">
-        <div class="section-heading"><div><span>执行模型</span><h2>五个工具阶段，<br/>形成可验证路径。</h2></div><p>Agent 运行不是隐藏的黑箱。每个工具只承担一个明确职责，并在最终建议前通过策略门控。</p></div>
+        <div class="section-heading"><div><span>执行模型</span><h2>八个工具阶段，<br/>形成完整处置闭环。</h2></div><p>调查、授权、执行和知识发布相互分离。每个阶段都有输入、输出、状态和审计记录。</p></div>
         <div class="architecture-flow">
-          ${["github_status.read","evidence.normalize","diagnosis.rank","citations.validate","policy.gate"].map((item, index) => `<div class="arch-node"><span>0${index + 1}</span><b>${item}</b><small>${["读取事故","规范证据","排序假设","验证引用","风险决策"][index]}</small></div>${index < 4 ? '<i>→</i>' : ''}`).join("")}
+          ${["alert.receive","evidence.normalize","diagnosis.rank","citations.validate","policy.gate","runbook.execute","remediation.validate","knowledge.draft"].map((item, index) => `<div class="arch-node"><span>${String(index + 1).padStart(2, "0")}</span><b>${item}</b><small>${["接收去重","规范证据","排序假设","验证引用","风险决策","执行处置","验证回滚","复盘候选"][index]}</small></div>${index < 7 ? '<i>→</i>' : ''}`).join("")}
         </div>
       </section>
 
@@ -316,19 +329,19 @@ function renderDashboard() {
   document.body.className = "page-app";
   app.innerHTML = `<div class="app-frame">${appSidebar("home")}<div class="app-main">${appTopbar("事故控制台")}
     <main class="dashboard shell-app">
-      <section class="dashboard-heading"><div><span>事故响应与运行审计</span><h1>事故控制台</h1><p>用于选择真实事故、启动一次受约束的 Agent 调查，并查看证据、根因假设、处置建议和人工审批记录。</p></div><button class="button primary" id="new-incident">${icon("plus", 16)} 新建调查</button></section>
+      <section class="dashboard-heading"><div><span>自动响应、调查、处置与沉淀</span><h1>事故控制台</h1><p>接收真实告警，聚合证据并生成根因假设；匹配标准 Runbook 后，经过策略门控完成处置演练、恢复验证、失败回滚和复盘候选。</p></div><button class="button primary" id="new-incident">${icon("plus", 16)} 新建调查</button></section>
       <section class="metric-grid">
         <article><span>真实事故</span><strong>${state.dashboard?.incident_count ?? state.scenarios.length}</strong><small>${state.dashboard?.source_name || "3 个官方状态页"} · ${dataModeLabel(state.dashboard?.data_mode || "—")}</small><i class="metric-icon purple">${icon("database", 20)}</i></article>
         <article><span>未解决事件</span><strong>${state.dashboard?.unresolved_count ?? 0}</strong><small>基于公开状态字段</small><i class="metric-icon orange">${icon("pulse", 20)}</i></article>
-        <article><span>本次会话运行</span><strong>${state.runs.length}</strong><small>进程内审计记录</small><i class="metric-icon blue">${icon("terminal", 20)}</i></article>
-        <article><span>待审批</span><strong>${state.runs.filter((run) => run.status === "awaiting-approval").length}</strong><small>不会自动执行动作</small><i class="metric-icon green">${icon("shield", 20)}</i></article>
+        <article><span>已恢复演练</span><strong>${state.dashboard?.recovered_count ?? 0}</strong><small>通过恢复条件验证</small><i class="metric-icon blue">${icon("terminal", 20)}</i></article>
+        <article><span>待审批</span><strong>${state.runs.filter((run) => run.status === "awaiting-approval").length}</strong><small>批准后仍只执行安全演练</small><i class="metric-icon green">${icon("shield", 20)}</i></article>
       </section>
       <section class="dashboard-grid">
         <div class="panel incident-panel"><header><div><span>真实公开事故</span><h2>多源官方事故流</h2><small class="source-language-note">中文优先展示；英文原文可按需展开核对</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></div>
         <aside class="dashboard-side">
           <section class="panel runtime-card"><header><div><span>运行时状态</span><h2>Agent 状态</h2></div><span class="healthy-chip">在线</span></header>
             <div class="runtime-brand"><span>OC</span><div><strong>${state.health?.model || "模型信息未加载"}</strong><small>${state.health?.deepseek_configured ? "大语言模型已配置" : "使用确定性降级分析"}</small></div></div>
-            <dl><div><dt>证据连接器</dt><dd>3 个官方状态页</dd></div><div><dt>工具阶段</dt><dd>5 个</dd></div><div><dt>写操作权限</dt><dd>已禁用</dd></div><div><dt>运行记录</dt><dd>进程内存</dd></div></dl>
+            <dl><div><dt>告警入口</dt><dd>${state.health?.webhook_configured ? "Webhook 已配置" : "等待企业凭据"}</dd></div><div><dt>遥测工具</dt><dd>${state.health?.tool_gateway_configured ? "企业网关已连接" : "公开站未连接"}</dd></div><div><dt>执行模式</dt><dd>安全演练</dd></div><div><dt>运行记录</dt><dd>SQLite 持久化</dd></div></dl>
           </section>
           <section class="panel run-history" id="runs"><header><div><span>本次会话记录</span><h2>最近运行</h2></div><span>${state.runs.length}</span></header><div id="run-list"></div></section>
         </aside>
@@ -411,7 +424,7 @@ function renderWorkbench(scenario, run = null) {
       <section class="agent-canvas">
         <header><div><span class="canvas-eyebrow">事故执行图 / ${run?.run_id || scenario?.source_incident_id || "新建"}</span><h1>${run ? "Agent 运行执行图" : "准备启动事故调查"}</h1></div><div class="canvas-controls"><button title="放大">${icon("plus", 16)}</button><button title="缩小">−</button><button title="适应画布">${icon("grid", 16)}</button></div></header>
         <div class="canvas-grid"><div class="graph-source"><span class="node-kicker">事故输入</span><div class="graph-icon">${icon("pulse", 21)}</div><strong id="graph-title"></strong><small id="graph-service"></small><i class="connector"></i></div><div class="graph-path" id="graph-path"></div></div>
-        <footer><span>${icon("layers", 15)} 证据执行图</span><span>${icon("shield", 15)} 生产写操作已禁用</span></footer>
+        <footer><span>${icon("layers", 15)} 端到端执行图</span><span>${icon("shield", 15)} 公开站仅执行安全演练</span></footer>
       </section>
       <aside class="investigation-panel">
         <header class="panel-head"><div><span class="panel-agent-mark">OC</span><div><h2>OnCall Agent</h2><p>证据约束型运行时</p></div></div><a href="#home" aria-label="关闭">${icon("x", 18)}</a></header>
@@ -431,7 +444,7 @@ function renderWorkbench(scenario, run = null) {
 
 function renderScenarioDetails(scenario) {
   const path = document.querySelector("#graph-path");
-  ["读取事故", "规范化证据", "诊断根因", "校验引用", "安全门控"].forEach((label, index) => {
+  ["读取事故", "规范化证据", "诊断根因", "校验引用", "安全门控", "执行处置", "恢复验证", "复盘候选"].forEach((label, index) => {
     const item = node("div", `graph-tool pending tool-${index + 1}`);
     item.innerHTML = `<span>0${index + 1}</span><div><b>${label}</b><small>等待执行</small></div><i></i>`;
     path.append(item);
@@ -456,7 +469,7 @@ function renderScenarioDetails(scenario) {
     steps.append(row);
   });
   const output = document.querySelector("#analysis-output");
-  output.innerHTML = `<div class="ready-card"><span>${icon("activity", 20)}</span><div><strong>已加载真实事故时间线</strong><p>启动后，Agent 将执行五个只读工具阶段并生成可审计 Run。</p></div></div>`;
+  output.innerHTML = `<div class="ready-card"><span>${icon("activity", 20)}</span><div><strong>已加载真实事故时间线</strong><p>启动后，Agent 先执行五个只读调查阶段；批准 Runbook 后才进入处置演练、验证和复盘阶段。</p></div></div>`;
   const actions = document.querySelector("#panel-actions");
   const button = node("button", "run-agent-button");
   button.innerHTML = `${icon("pulse", 17)} 启动 OnCall Agent <span>→</span>`;
@@ -477,21 +490,22 @@ function renderScenarioDetails(scenario) {
 
 function renderRunDetails(run) {
   const path = document.querySelector("#graph-path");
+  path.classList.toggle("expanded", run.tool_calls.length > 5);
   run.tool_calls.forEach((tool) => {
-    const item = node("div", `graph-tool success tool-${tool.sequence}`);
+    const item = node("div", `graph-tool ${tool.status === "failed" ? "failed" : "success"} tool-${tool.sequence}`);
     const seq = node("span", "", String(tool.sequence).padStart(2, "0"));
     const copy = node("div", "");
-    copy.append(node("b", "", toolStageLabel(tool.tool)), node("small", "", `${tool.duration_ms} 毫秒 · 只读`));
+    copy.append(node("b", "", toolStageLabel(tool.tool)), node("small", "", `${tool.duration_ms} 毫秒 · ${tool.read_only ? "只读" : "演练写操作"}`));
     const check = node("i", "");
-    check.innerHTML = icon("check", 13);
+    check.innerHTML = icon(tool.status === "failed" ? "x" : "check", 13);
     item.append(seq, copy, check);
     path.append(item);
   });
   const steps = document.querySelector("#agent-steps");
   run.tool_calls.forEach((tool) => {
     const row = node("div", "tool-row");
-    const stateIcon = node("span", "tool-check");
-    stateIcon.innerHTML = icon("check", 13);
+    const stateIcon = node("span", `tool-check ${tool.status}`);
+    stateIcon.innerHTML = icon(tool.status === "failed" ? "x" : "check", 13);
     const copy = node("div", "");
     copy.append(node("strong", "", toolStageLabel(tool.tool)), node("p", "", tool.output_summary));
     const time = node("small", "", `${tool.duration_ms}ms`);
@@ -501,7 +515,12 @@ function renderRunDetails(run) {
 
   const output = document.querySelector("#analysis-output");
   const primary = run.analysis.hypotheses[0];
-  output.innerHTML = `<section class="analysis-card"><header><span>首要根因假设</span><b>${Math.round(primary.confidence * 100)}%</b></header><h3></h3><p></p><div class="evidence-tags"></div></section><section class="action-card"><header><span>建议处置动作</span><b class="risk-chip ${run.analysis.recommendation.risk_level}">${riskLabel(run.analysis.recommendation.risk_level)}</b></header><p></p><details><summary>验证与回滚</summary><div class="validation-list"></div><strong>回滚方案</strong><p class="rollback"></p></details></section><section class="boundary-card"><span>${icon("shield", 17)}</span><p>公开实例仅记录审批决定，<b>不会执行</b>流量切换、回滚、Shell 或数据库写入。</p></section>`;
+  output.innerHTML = `<section class="analysis-card"><header><span>首要根因假设</span><b>${Math.round(primary.confidence * 100)}%</b></header><h3></h3><p></p><div class="evidence-tags"></div></section>
+    <section class="action-card"><header><span>建议处置动作</span><b class="risk-chip ${run.analysis.recommendation.risk_level}">${riskLabel(run.analysis.recommendation.risk_level)}</b></header><p></p><details><summary>验证与回滚</summary><div class="validation-list"></div><strong>回滚方案</strong><p class="rollback"></p></details></section>
+    ${run.runbook ? '<section class="runbook-card"><header><span>匹配的标准 Runbook</span><b>版本化</b></header><h3></h3><p class="runbook-meta"></p><ol class="runbook-steps"></ol><details><summary>恢复条件与回滚步骤</summary><div class="runbook-validation"></div><div class="runbook-rollback"></div></details></section>' : '<section class="boundary-card warning"><span></span><p>当前根因假设没有匹配到标准 Runbook，只能升级人工处理。</p></section>'}
+    ${run.execution ? '<section class="execution-card"><header><span>处置与恢复验证</span><b></b></header><h3></h3><p class="execution-summary"></p><div class="execution-results"></div><p class="rollback-result"></p></section>' : ''}
+    ${run.knowledge_candidate ? '<section class="knowledge-candidate-card"><header><span>事故知识候选</span><b></b></header><h3></h3><p class="candidate-summary"></p><dl><div><dt>候选根因</dt><dd class="candidate-cause"></dd></div><div><dt>验证结果</dt><dd class="candidate-validation"></dd></div></dl></section>' : ''}
+    <section class="boundary-card"><span>${icon("shield", 17)}</span><p>当前公开实例使用<b>安全演练连接器</b>，不会连接企业生产权限；接入真实系统后仍必须使用允许列表、RBAC、审批和自动回滚。</p></section>`;
   output.querySelector(".analysis-card h3").textContent = primary.title;
   output.querySelector(".analysis-card > p").textContent = primary.rationale;
   const evidenceTags = output.querySelector(".evidence-tags");
@@ -512,6 +531,43 @@ function renderRunDetails(run) {
     const row = node("p", ""); row.innerHTML = icon("check", 13); row.append(document.createTextNode(item)); validation.append(row);
   });
   output.querySelector(".rollback").textContent = run.analysis.recommendation.rollback;
+
+  if (run.runbook) {
+    output.querySelector(".runbook-card h3").textContent = run.runbook.name;
+    output.querySelector(".runbook-meta").textContent = `${run.runbook.runbook_id} · v${run.runbook.version} · 当前模式：安全演练 · 不允许自动执行`;
+    const runbookSteps = output.querySelector(".runbook-steps");
+    run.runbook.steps.forEach((step) => {
+      const item = node("li", "");
+      item.append(node("strong", "", step.description), node("small", "", step.mutating ? "需要写权限" : "只读检查"));
+      runbookSteps.append(item);
+    });
+    run.runbook.validation_checks.forEach((text) => output.querySelector(".runbook-validation").append(node("p", "", `验证：${text}`)));
+    run.runbook.rollback_steps.forEach((text) => output.querySelector(".runbook-rollback").append(node("p", "", `回滚：${text}`)));
+  }
+
+  if (run.execution) {
+    const executionCard = output.querySelector(".execution-card");
+    executionCard.classList.add(run.execution.status);
+    executionCard.querySelector("header b").textContent = statusLabel(run.execution.status);
+    executionCard.querySelector("h3").textContent = `${run.execution.connector} · ${run.execution.execution_id}`;
+    executionCard.querySelector(".execution-summary").textContent = run.execution.validation_summary;
+    run.execution.steps.forEach((step) => {
+      const row = node("div", `execution-result ${step.status}`);
+      row.append(node("span", "", String(step.sequence).padStart(2, "0")), node("strong", "", step.operation), node("p", "", step.output_summary));
+      executionCard.querySelector(".execution-results").append(row);
+    });
+    if (run.execution.rollback_performed) executionCard.querySelector(".rollback-result").textContent = run.execution.rollback_summary;
+  }
+
+  if (run.knowledge_candidate) {
+    const candidate = run.knowledge_candidate;
+    const candidateCard = output.querySelector(".knowledge-candidate-card");
+    candidateCard.querySelector("header b").textContent = { "pending-review": "待审核", accepted: "已接收", rejected: "已拒绝" }[candidate.status] || candidate.status;
+    candidateCard.querySelector("h3").textContent = candidate.title;
+    candidateCard.querySelector(".candidate-summary").textContent = candidate.summary;
+    candidateCard.querySelector(".candidate-cause").textContent = candidate.root_cause;
+    candidateCard.querySelector(".candidate-validation").textContent = candidate.validation_result;
+  }
   renderRunActions(run);
 }
 
@@ -521,14 +577,29 @@ function renderRunActions(run) {
   if (run.status === "awaiting-approval") {
     const reject = node("button", "decision-button reject", "拒绝建议");
     const approve = node("button", "decision-button approve");
-    approve.innerHTML = `${icon("shield", 15)} 批准为决策输入`;
+    approve.innerHTML = `${icon("shield", 15)} 批准 Runbook`;
     reject.addEventListener("click", () => decideRun(run, "reject"));
     approve.addEventListener("click", () => decideRun(run, "approve"));
     actions.append(reject, approve);
+  } else if (run.status === "approved") {
+    const fail = node("button", "decision-button reject", "演练验证失败");
+    const execute = node("button", "decision-button approve");
+    execute.innerHTML = `${icon("activity", 15)} 执行成功演练`;
+    fail.addEventListener("click", () => executeRun(run, "failure"));
+    execute.addEventListener("click", () => executeRun(run, "success"));
+    actions.append(fail, execute);
+  } else if (run.knowledge_candidate?.status === "pending-review") {
+    const reject = node("button", "decision-button reject", "拒绝知识候选");
+    const accept = node("button", "decision-button approve");
+    accept.innerHTML = `${icon("check", 15)} 审核并接收`;
+    reject.addEventListener("click", () => reviewKnowledge(run, "reject"));
+    accept.addEventListener("click", () => reviewKnowledge(run, "accept"));
+    actions.append(reject, accept);
   } else {
     const summary = node("div", `decision-record ${run.status}`);
-    summary.innerHTML = run.status === "approved" ? icon("check", 16) : run.status === "rejected" ? icon("x", 16) : icon("shield", 16);
-    summary.append(document.createTextNode(`${statusLabel(run.status)} · 未执行生产动作`));
+    summary.innerHTML = ["recovered", "completed"].includes(run.status) ? icon("check", 16) : run.status === "rejected" ? icon("x", 16) : icon("shield", 16);
+    const knowledgeState = run.knowledge_candidate ? ` · 知识候选${run.knowledge_candidate.status === "accepted" ? "已接收" : "已审核"}` : "";
+    summary.append(document.createTextNode(`${statusLabel(run.status)} · 未执行生产动作${knowledgeState}`));
     actions.append(summary);
   }
 }
@@ -543,7 +614,47 @@ async function decideRun(run, decision) {
     });
     state.activeRun = updated;
     state.runs = state.runs.map((item) => item.run_id === updated.run_id ? updated : item);
-    showToast(decision === "approve" ? "已记录批准；未执行生产动作" : "已拒绝建议", "success");
+    showToast(decision === "approve" ? "Runbook 已批准，可以进入安全演练" : "已拒绝建议", "success");
+    renderWorkbench(null, updated);
+  } catch (error) {
+    showToast(error.message, "error");
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+async function executeRun(run, simulatedResult) {
+  const buttons = document.querySelectorAll(".decision-button");
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    const updated = await api(`/api/runs/${encodeURIComponent(run.run_id)}/execute`, {
+      method: "POST",
+      body: JSON.stringify({
+        operator: "web-demo-operator",
+        confirmation: "EXECUTE DRY RUN",
+        simulated_result: simulatedResult,
+      }),
+    });
+    state.activeRun = updated;
+    state.runs = state.runs.map((item) => item.run_id === updated.run_id ? updated : item);
+    showToast(simulatedResult === "success" ? "处置演练通过恢复验证" : "恢复验证失败，已演练回滚并升级人工", simulatedResult === "success" ? "success" : "info");
+    renderWorkbench(null, updated);
+  } catch (error) {
+    showToast(error.message, "error");
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+async function reviewKnowledge(run, decision) {
+  const buttons = document.querySelectorAll(".decision-button");
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    const updated = await api(`/api/runs/${encodeURIComponent(run.run_id)}/knowledge-review`, {
+      method: "POST",
+      body: JSON.stringify({ decision, reviewer: "web-demo-reviewer" }),
+    });
+    state.activeRun = updated;
+    state.runs = state.runs.map((item) => item.run_id === updated.run_id ? updated : item);
+    showToast(decision === "accept" ? "知识候选已通过审核" : "知识候选已拒绝", "success");
     renderWorkbench(null, updated);
   } catch (error) {
     showToast(error.message, "error");
