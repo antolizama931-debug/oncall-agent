@@ -32,7 +32,7 @@ from .models import (
 )
 from .runtime import AgentRunStore
 from .knowledge import KnowledgeBaseStore, MAX_FILE_BYTES, SessionMemoryStore
-from .statuspage import GitHubStatusClient
+from .statuspage import MultiStatusClient
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -48,7 +48,16 @@ DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").s
 DEEPSEEK_MAX_TOKENS = int(os.getenv("DEEPSEEK_MAX_TOKENS", "2200"))
 ALLOW_RULE_FALLBACK = os.getenv("ONCALL_ALLOW_RULE_FALLBACK", "true").lower() == "true"
 STATUS_CACHE_SECONDS = int(os.getenv("ONCALL_STATUS_CACHE_SECONDS", "300"))
-STATUS_SCENARIO_LIMIT = int(os.getenv("ONCALL_STATUS_SCENARIO_LIMIT", "6"))
+STATUS_SCENARIO_LIMIT = int(os.getenv("ONCALL_STATUS_SCENARIO_LIMIT", "36"))
+STATUS_PER_SOURCE_LIMIT = int(os.getenv("ONCALL_STATUS_PER_SOURCE_LIMIT", "12"))
+DATA_DIR_VALUE = (
+    os.getenv("ONCALL_DATA_DIR", "").strip()
+    or os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    or str(BASE_DIR / "data")
+)
+DATA_DIR = Path(DATA_DIR_VALUE)
+if not DATA_DIR.is_absolute():
+    DATA_DIR = BASE_DIR / DATA_DIR
 
 deepseek_client = (
     DeepSeekClient(
@@ -60,21 +69,27 @@ deepseek_client = (
     if DEEPSEEK_API_KEY
     else None
 )
-status_client = GitHubStatusClient(
+status_client = MultiStatusClient(
     cache_seconds=STATUS_CACHE_SECONDS,
     scenario_limit=STATUS_SCENARIO_LIMIT,
+    per_source_limit=STATUS_PER_SOURCE_LIMIT,
 )
 run_store = AgentRunStore(max_runs=int(os.getenv("ONCALL_MAX_RUNS", "100")))
-knowledge_store = KnowledgeBaseStore(max_documents=int(os.getenv("ONCALL_MAX_DOCUMENTS", "20")))
+knowledge_store = KnowledgeBaseStore(
+    max_documents=int(os.getenv("ONCALL_MAX_DOCUMENTS", "50")),
+    data_dir=DATA_DIR,
+)
 memory_store = SessionMemoryStore(
     max_sessions=int(os.getenv("ONCALL_MAX_SESSIONS", "100")),
-    max_messages=int(os.getenv("ONCALL_MAX_SESSION_MESSAGES", "16")),
+    recent_messages=int(os.getenv("ONCALL_MEMORY_RECENT_MESSAGES", "8")),
+    summary_max_chars=int(os.getenv("ONCALL_MEMORY_SUMMARY_CHARS", "2400")),
+    context_max_chars=int(os.getenv("ONCALL_CONTEXT_MAX_CHARS", "12000")),
 )
 
 app = FastAPI(
     title="OnCall Agent API",
-    version="0.3.0",
-    description="基于真实事故、混合检索和人工审批门控的 OnCall Agent 运行时。",
+    version="0.4.0",
+    description="基于多源真实事故、持久化混合检索和人工审批门控的 OnCall Agent 运行时。",
 )
 
 # Same-origin deployment does not need CORS. Localhost origins are allowed only for
@@ -132,7 +147,7 @@ def health() -> dict[str, str | bool | int]:
         "deepseek_configured": deepseek_client is not None,
         "model": DEEPSEEK_MODEL,
         "fallback_enabled": ALLOW_RULE_FALLBACK,
-        "incident_source": "GitHub Status",
+        "incident_source": "、".join(status_client.source_names),
         "incident_data_mode": status_client.last_mode,
         "run_store": "process-local",
         "run_count": run_store.count(),
@@ -202,7 +217,7 @@ async def dashboard() -> DashboardSummary:
         unresolved_count=sum(item.incident_status not in {"resolved", "postmortem"} for item in scenarios),
         run_count=run_store.count(),
         awaiting_approval_count=run_store.awaiting_count(),
-        source_name="GitHub Status",
+        source_name="、".join(status_client.source_names),
         data_mode=status_client.last_mode,
         deepseek_configured=deepseek_client is not None,
         model=DEEPSEEK_MODEL,
@@ -268,7 +283,7 @@ async def list_knowledge_documents() -> list[KnowledgeDocument]:
 
 @app.post("/api/knowledge/documents", response_model=KnowledgeDocument, status_code=status.HTTP_201_CREATED)
 async def upload_knowledge_document(file: UploadFile = File(...)) -> KnowledgeDocument:
-    """Extract a bounded PDF/Markdown/TXT upload into process-local chunks."""
+    """提取文档文本，写入 SQLite，并在进程内建立混合检索索引。"""
     try:
         data = await file.read(MAX_FILE_BYTES + 1)
     finally:
@@ -293,14 +308,19 @@ def clear_session(session_id: str) -> dict[str, bool]:
 async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse:
     await _scenarios_with_knowledge()
     citations = knowledge_store.search(payload.question, top_k=payload.top_k)
-    history = memory_store.history(payload.session_id)
+    memory_context = memory_store.context(payload.session_id)
     status_snapshot = knowledge_store.status()
     trace = [
         "问题识别：知识库问答",
         f"数据源路由：{len(status_snapshot.source_types)} 类数据源",
         f"混合检索：召回 {len(citations)} 个相关分块",
         "RRF 融合：合并 BM25 与 BGE 中文向量排名",
-        f"会话记忆：读取 {len(history)} 条历史消息",
+        (
+            "会话记忆：滚动摘要"
+            f"（{memory_context.summarized_message_count} 条已压缩）+ "
+            f"{len(memory_context.recent_messages)} 条近期原文"
+        ),
+        f"上下文预算：最多 {memory_store.context_max_chars:,} 个字符",
     ]
     usage = None
     if deepseek_client is not None:
@@ -308,7 +328,8 @@ async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse
             answer, usage = await deepseek_client.answer_question(
                 question=payload.question,
                 citations=citations,
-                history=history,
+                history=memory_context.recent_messages,
+                history_summary=memory_context.summary,
             )
             analysis_mode = "deepseek-rag" if citations else "deepseek-general"
             trace.append("答案生成：DeepSeek 已返回响应")
@@ -322,9 +343,9 @@ async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse
         answer = _knowledge_fallback(citations)
         analysis_mode = "retrieval-unconfigured"
         trace.append("答案生成：模型未配置，返回检索原文")
-    messages = memory_store.append_exchange(payload.session_id, payload.question, answer)
+    updated_memory = memory_store.append_exchange(payload.session_id, payload.question, answer)
     trace.append("安全校验：答案仅保留可追踪知识片段")
-    trace.append("会话写入：已保存到有上限的进程内存")
+    trace.append("会话写入：近期原文保存在进程内存，较早消息进入有界滚动摘要")
     return KnowledgeChatResponse(
         answer=answer,
         session_id=payload.session_id,
@@ -333,7 +354,10 @@ async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse
         analysis_mode=analysis_mode,
         model=DEEPSEEK_MODEL if deepseek_client is not None else None,
         usage=usage,
-        memory_turns=len(messages) // 2,
+        memory_turns=updated_memory.total_turns,
+        memory_summary_active=bool(updated_memory.summary),
+        memory_recent_messages=len(updated_memory.recent_messages),
+        memory_clipped=updated_memory.clipped,
     )
 
 

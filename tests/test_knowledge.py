@@ -1,4 +1,4 @@
-from app.knowledge import KnowledgeBaseStore
+from app.knowledge import KnowledgeBaseStore, SessionMemoryStore
 
 
 def test_dense_channel_recalls_semantically_related_chinese_question():
@@ -25,3 +25,33 @@ def test_status_reports_truthful_hybrid_retrieval_components():
     assert status.retrieval_mode == "混合检索 RAG"
     assert status.embedding_model == "BAAI/bge-small-zh-v1.5"
     assert "RRF" in status.retriever
+
+
+def test_uploaded_document_is_restored_from_sqlite(tmp_path):
+    first = KnowledgeBaseStore(max_documents=2, data_dir=tmp_path)
+    first.add("restart-guide.md", "节点重启前必须先排空流量并记录审批单。".encode("utf-8"))
+
+    restored = KnowledgeBaseStore(max_documents=2, data_dir=tmp_path)
+
+    assert restored.list()[0].name == "restart-guide.md"
+    assert restored.search("重启节点前需要做什么？")[0].document_name == "restart-guide.md"
+    assert "SQLite" in restored.status().storage
+
+
+def test_session_memory_uses_summary_recent_window_and_character_budget():
+    memory = SessionMemoryStore(
+        max_sessions=2,
+        recent_messages=4,
+        summary_max_chars=500,
+        context_max_chars=1500,
+    )
+    for index in range(5):
+        memory.append_exchange("session-a", f"问题 {index}：如何排查？", f"回答 {index}：先核对证据。")
+
+    context = memory.context("session-a")
+
+    assert context.total_turns == 5
+    assert context.summarized_message_count == 6
+    assert len(context.recent_messages) == 4
+    assert "用户：问题 0" in context.summary
+    assert len(context.summary) + sum(len(item.content) for item in context.recent_messages) <= 1500

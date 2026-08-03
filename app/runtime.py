@@ -51,7 +51,7 @@ def _risk_label(risk: RiskLevel) -> str:
     }[risk]
 
 
-def _tool_calls(analysis: IncidentAnalysis, sourced: bool) -> list[ToolCall]:
+def _tool_calls(analysis: IncidentAnalysis, source_name: str | None) -> list[ToolCall]:
     trace = {step.stage: step for step in analysis.trace}
     observe = trace.get("observe")
     correlate = trace.get("correlate")
@@ -60,12 +60,12 @@ def _tool_calls(analysis: IncidentAnalysis, sourced: bool) -> list[ToolCall]:
     return [
         ToolCall(
             sequence=1,
-            tool="github_status.read" if sourced else "incident.input",
-            purpose="读取公开事故时间线" if sourced else "接收操作员提供的证据",
+            tool="statuspage.read" if source_name else "incident.input",
+            purpose="读取公开事故时间线" if source_name else "接收操作员提供的证据",
             status="succeeded",
             output_summary=(
-                "已读取固定可信主机上的 GitHub Status 事故回放"
-                if sourced
+                f"已读取固定可信主机上的 {source_name} 事故回放"
+                if source_name
                 else "已校验操作员提交的事故字段"
             ),
             duration_ms=observe.duration_ms if observe else 0,
@@ -133,7 +133,7 @@ class AgentRunStore:
             source_name=request.source_name,
             source_url=request.source_url,
             status=_run_status(analysis),
-            tool_calls=_tool_calls(analysis, sourced=scenario is not None),
+            tool_calls=_tool_calls(analysis, source_name=scenario.source_name if scenario else None),
             analysis=analysis,
             created_at=now,
             updated_at=now,

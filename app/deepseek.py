@@ -249,6 +249,7 @@ class DeepSeekClient:
         question: str,
         citations: list[KnowledgeCitation],
         history: list[ChatMessage],
+        history_summary: str = "",
     ) -> tuple[str, TokenUsage]:
         """Answer a knowledge question with retrieved context and bounded memory."""
         context = [
@@ -263,15 +264,17 @@ class DeepSeekClient:
             for item in citations
         ]
         messages: list[dict[str, str]] = [{"role": "system", "content": KNOWLEDGE_SYSTEM_PROMPT}]
-        messages.extend(
-            {"role": item.role, "content": item.content}
-            for item in history[-8:]
-        )
+        messages.extend({"role": item.role, "content": item.content} for item in history)
         messages.append(
             {
                 "role": "user",
                 "content": json.dumps(
-                    {"question": question, "KNOWLEDGE_CONTEXT": context},
+                    {
+                        "question": question,
+                        "CONVERSATION_SUMMARY": history_summary or "无",
+                        "MEMORY_NOTICE": "会话摘要仅用于保持对话连续性，不能替代知识证据。",
+                        "KNOWLEDGE_CONTEXT": context,
+                    },
                     ensure_ascii=False,
                 ),
             }

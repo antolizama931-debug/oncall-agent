@@ -1,11 +1,13 @@
 import asyncio
 import os
+import tempfile
 
 import httpx
 
 # Tests must never inherit a developer's real model credential from .env. An
 # explicitly present empty value prevents load_dotenv() from loading the key.
 os.environ["DEEPSEEK_API_KEY"] = ""
+os.environ["ONCALL_DATA_DIR"] = tempfile.mkdtemp(prefix="oncall-agent-tests-")
 
 from app.main import app, daily_usage, request_windows, status_client
 from app.real_data import GITHUB_STATUS_INCIDENTS
@@ -89,7 +91,7 @@ def test_agent_run_records_tools_and_requires_non_executing_approval():
     run = created.json()
     assert run["status"] == "awaiting-approval"
     assert [item["tool"] for item in run["tool_calls"]] == [
-        "github_status.read",
+        "statuspage.read",
         "evidence.normalize",
         "diagnosis.rank",
         "citations.validate",
@@ -127,8 +129,8 @@ def test_dashboard_reports_source_and_runtime_state():
     response = asyncio.run(request("GET", "/api/dashboard"))
     assert response.status_code == 200
     body = response.json()
-    assert body["source_name"] == "GitHub Status"
-    assert body["incident_count"] == len(GITHUB_STATUS_INCIDENTS)
+    assert body["source_name"] == "GitHub Status、Cloudflare Status、Datadog Status"
+    assert body["incident_count"] == len(GITHUB_STATUS_INCIDENTS) * 3
     assert body["data_mode"] == "live"
 
 

@@ -120,6 +120,7 @@ function riskLabel(risk) {
 function toolStageLabel(tool) {
   return {
     "github_status.read": "读取 GitHub Status 事故",
+    "statuspage.read": "读取官方状态页事故",
     "incident.input": "读取脱敏事故输入",
     "evidence.normalize": "规范化证据",
     "diagnosis.rank": "排序根因假设",
@@ -182,7 +183,7 @@ function renderLanding() {
         <div class="hero-runtime" aria-label="OnCall Agent 执行预览">
           <div class="runtime-window">
             <div class="runtime-bar"><span><i></i><i></i><i></i></span><b>Agent 运行轨迹</b><small>实时</small></div>
-            <div class="runtime-incident"><span class="severity-badge sev1">SEV-1</span><div><small>事故回放</small><strong>GitHub 服务性能下降</strong></div><span class="source-chip">GitHub Status</span></div>
+            <div class="runtime-incident"><span class="severity-badge sev1">SEV-1</span><div><small>事故回放</small><strong>云服务性能下降</strong></div><span class="source-chip">官方状态页</span></div>
             <div class="agent-flow">
               <div class="flow-node active"><span>01</span><div><b>观察（Observe）</b><small>规范化公开信号</small></div><i></i></div>
               <div class="flow-line"></div>
@@ -199,7 +200,7 @@ function renderLanding() {
 
       <section class="proof-row shell">
         <div><strong>${state.dashboard?.incident_count ?? "—"}</strong><span>真实事故回放</span></div>
-        <div><strong>${state.dashboard?.source_name || "GitHub Status"}</strong><span>公开数据源</span></div>
+        <div><strong>${state.dashboard?.source_name || "3 个官方状态页"}</strong><span>公开数据源</span></div>
         <div><strong>5</strong><span>可审计工具阶段</span></div>
         <div><strong>0</strong><span>自动生产写操作</span></div>
       </section>
@@ -207,7 +208,7 @@ function renderLanding() {
       <section class="capability-section shell" id="capabilities">
         <div class="section-heading"><div><span>OnCall 控制平面</span><h2>不是聊天框，<br/>而是受约束的 Agent Runtime。</h2></div><p>观察、证据、假设、动作和授权严格分层。每个阶段都能被测试、回放和审计。</p></div>
         <div class="capability-grid">
-          <article class="cap-card violet"><div class="cap-icon">${icon("database", 25)}</div><span>01 / 数据连接</span><h3>真实事故连接器</h3><p>服务端读取固定白名单 GitHub Status API，失败时回退到带来源链接的验证快照。</p><footer>实时读取与事故回放 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card violet"><div class="cap-icon">${icon("database", 25)}</div><span>01 / 数据连接</span><h3>真实事故连接器</h3><p>服务端并行读取 GitHub、Cloudflare、Datadog 三个官方状态页；部分源失败时明确标记降级状态。</p><footer>实时读取与事故回放 ${icon("arrow", 15)}</footer></article>
           <article class="cap-card orange"><div class="cap-icon">${icon("layers", 25)}</div><span>02 / 诊断推理</span><h3>证据约束诊断</h3><p>模型只能引用已编号证据；缺少区分性遥测时，系统明确降低置信度并请求补充数据。</p><footer>证据优先 ${icon("arrow", 15)}</footer></article>
           <article class="cap-card blue"><div class="cap-icon">${icon("activity", 25)}</div><span>03 / 执行追踪</span><h3>完整执行轨迹</h3><p>工具调用、目的、输出摘要、时延和只读属性进入同一条 Agent Run，可直接检查。</p><footer>可观察执行循环 ${icon("arrow", 15)}</footer></article>
           <article class="cap-card green"><div class="cap-icon">${icon("shield", 25)}</div><span>04 / 安全治理</span><h3>人工审批门控</h3><p>置信度从不等于授权。高风险建议进入审批或阻断状态，公开实例不执行任何恢复操作。</p><footer>人工保留最终控制权 ${icon("arrow", 15)}</footer></article>
@@ -310,17 +311,17 @@ function renderDashboard() {
     <main class="dashboard shell-app">
       <section class="dashboard-heading"><div><span>事故响应与运行审计</span><h1>事故控制台</h1><p>用于选择真实事故、启动一次受约束的 Agent 调查，并查看证据、根因假设、处置建议和人工审批记录。</p></div><button class="button primary" id="new-incident">${icon("plus", 16)} 新建调查</button></section>
       <section class="metric-grid">
-        <article><span>真实事故</span><strong>${state.dashboard?.incident_count ?? state.scenarios.length}</strong><small>${state.dashboard?.source_name || "GitHub Status"} · ${dataModeLabel(state.dashboard?.data_mode || "—")}</small><i class="metric-icon purple">${icon("database", 20)}</i></article>
+        <article><span>真实事故</span><strong>${state.dashboard?.incident_count ?? state.scenarios.length}</strong><small>${state.dashboard?.source_name || "3 个官方状态页"} · ${dataModeLabel(state.dashboard?.data_mode || "—")}</small><i class="metric-icon purple">${icon("database", 20)}</i></article>
         <article><span>未解决事件</span><strong>${state.dashboard?.unresolved_count ?? 0}</strong><small>基于公开状态字段</small><i class="metric-icon orange">${icon("pulse", 20)}</i></article>
         <article><span>本次会话运行</span><strong>${state.runs.length}</strong><small>进程内审计记录</small><i class="metric-icon blue">${icon("terminal", 20)}</i></article>
         <article><span>待审批</span><strong>${state.runs.filter((run) => run.status === "awaiting-approval").length}</strong><small>不会自动执行动作</small><i class="metric-icon green">${icon("shield", 20)}</i></article>
       </section>
       <section class="dashboard-grid">
-        <div class="panel incident-panel"><header><div><span>真实公开事故</span><h2>GitHub Status 事故流</h2><small class="source-language-note">原始事故标题和正文保留来源语言</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></div>
+        <div class="panel incident-panel"><header><div><span>真实公开事故</span><h2>多源官方事故流</h2><small class="source-language-note">GitHub · Cloudflare · Datadog；原始标题保留来源语言</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></div>
         <aside class="dashboard-side">
           <section class="panel runtime-card"><header><div><span>运行时状态</span><h2>Agent 状态</h2></div><span class="healthy-chip">在线</span></header>
             <div class="runtime-brand"><span>OC</span><div><strong>${state.health?.model || "模型信息未加载"}</strong><small>${state.health?.deepseek_configured ? "大语言模型已配置" : "使用确定性降级分析"}</small></div></div>
-            <dl><div><dt>证据连接器</dt><dd>GitHub Status</dd></div><div><dt>工具阶段</dt><dd>5 个</dd></div><div><dt>写操作权限</dt><dd>已禁用</dd></div><div><dt>运行记录</dt><dd>进程内存</dd></div></dl>
+            <dl><div><dt>证据连接器</dt><dd>3 个官方状态页</dd></div><div><dt>工具阶段</dt><dd>5 个</dd></div><div><dt>写操作权限</dt><dd>已禁用</dd></div><div><dt>运行记录</dt><dd>进程内存</dd></div></dl>
           </section>
           <section class="panel run-history" id="runs"><header><div><span>本次会话记录</span><h2>最近运行</h2></div><span>${state.runs.length}</span></header><div id="run-list"></div></section>
         </aside>
@@ -548,7 +549,7 @@ function renderKnowledgeMessages() {
   container.innerHTML = "";
   if (!state.chatMessages.length) {
     const welcome = node("div", "knowledge-message assistant");
-    welcome.innerHTML = `<span class="message-avatar">AI</span><div><p>我是 OnCall 知识库 Agent。系统已接入 GitHub Status 真实事故；你也可以上传 PDF、Markdown 或 TXT 文档。回答会同时使用 BM25 词法检索与 BGE 中文向量检索，并通过 RRF 融合结果。</p></div>`;
+    welcome.innerHTML = `<span class="message-avatar">AI</span><div><p>我是 OnCall 知识库 Agent。系统已接入 GitHub、Cloudflare、Datadog 的真实公开事故；你也可以上传 PDF、Markdown 或 TXT 文档。回答会同时使用 BM25 词法检索与 BGE 中文向量检索，并通过 RRF 融合结果。</p></div>`;
     container.append(welcome);
     return;
   }
@@ -688,7 +689,7 @@ async function renderCustomerService() {
   document.body.className = "page-knowledge";
   app.innerHTML = `<header class="knowledge-topbar"><div class="knowledge-topbar-inner"><a href="#landing">← 返回导航页</a><div class="knowledge-brand"><span>OC</span><div><strong>OnCall 知识库 Agent</strong><small>证据约束型 RAG 工作台</small></div></div><span class="runtime-pill"><i></i>Agent 运行时在线</span></div></header>
     <main class="knowledge-page shell-wide">
-      <section class="knowledge-hero"><div><span>OnCall Agent 知识工作台</span><h1>让运行知识，<br/>真正被 Agent 理解</h1></div><div><p>检索增强生成（RAG）同时读取 GitHub Status 真实事故和用户上传文档，回答保留可核对来源。</p><p>检索链路：BM25 精确召回 + BGE 中文语义召回 + RRF 排名融合。支持 PDF、Markdown、TXT 和有上限的会话记忆。</p></div></section>
+      <section class="knowledge-hero"><div><span>OnCall Agent 知识工作台</span><h1>让运行知识，<br/>真正被 Agent 理解</h1></div><div><p>检索增强生成（RAG）同时读取三个官方状态页的真实事故和用户上传文档，回答保留可核对来源。</p><p>检索链路：BM25 精确召回 + BGE 中文语义召回 + RRF 排名融合；上下文采用滚动摘要、近期原文和硬字符预算。</p></div></section>
       <section class="knowledge-layout">
         <article class="knowledge-chat-card">
           <header><div class="knowledge-agent-title"><span>AI</span><div><strong>OnCall 知识库 Agent</strong><small><i></i> 知识库在线</small></div></div><b>混合检索 RAG</b></header>
@@ -697,8 +698,8 @@ async function renderCustomerService() {
           <section class="knowledge-composer"><h3>快捷问题</h3><div class="knowledge-prompts"><button>这个项目如何限制危险操作？</button><button>会话记忆如何工作？</button><button>混合检索采用了哪些技术？</button><button>最近的 GitHub 事故有哪些？</button></div><form id="knowledge-form"><input name="question" minlength="2" maxlength="4000" placeholder="请输入要检索的知识库问题……" autocomplete="off" required><button type="submit">发送问题 →</button></form></section>
         </article>
         <aside class="knowledge-sidebar">
-          <section class="knowledge-status-card"><header><h2>知识库状态</h2><span>已连接</span></header><div class="knowledge-banner"><strong>Hybrid RAG</strong><small>BM25 + BGE + RRF</small></div><div class="knowledge-stat-grid"><div><span>文档与分块</span><strong id="knowledge-document-count">正在加载</strong></div><div><span>数据来源</span><strong id="knowledge-types">正在加载</strong></div><div><span>检索器</span><strong id="knowledge-retriever">正在加载</strong></div><div><span>存储方式</span><strong id="knowledge-storage">正在加载</strong></div></div><div id="knowledge-document-list" class="knowledge-document-list"></div><input id="knowledge-file" type="file" accept=".pdf,.md,.markdown,.txt" hidden><button id="upload-knowledge-button" class="knowledge-upload">上传本地知识文档</button><small class="upload-help">支持 PDF、Markdown、TXT · 单文件最大 5 MB · 服务重启后清空</small></section>
-          <section class="knowledge-memory-card"><header><h2>会话记忆</h2><span>记忆已启用</span></header><dl><div><dt>会话 ID</dt><dd id="memory-session">正在创建</dd></div><div><dt>历史对话轮数</dt><dd id="memory-turns">0 轮</dd></div><div><dt>上下文窗口</dt><dd>最近 8 条消息</dd></div><div><dt>存储边界</dt><dd>进程内存</dd></div></dl><button id="clear-memory">清空本次会话</button></section>
+          <section class="knowledge-status-card"><header><h2>知识库状态</h2><span>已连接</span></header><div class="knowledge-banner"><strong>Hybrid RAG</strong><small>BM25 + BGE + RRF</small></div><div class="knowledge-stat-grid"><div><span>文档与分块</span><strong id="knowledge-document-count">正在加载</strong></div><div><span>数据来源</span><strong id="knowledge-types">正在加载</strong></div><div><span>检索器</span><strong id="knowledge-retriever">正在加载</strong></div><div><span>存储方式</span><strong id="knowledge-storage">正在加载</strong></div></div><div id="knowledge-document-list" class="knowledge-document-list"></div><input id="knowledge-file" type="file" accept=".pdf,.md,.markdown,.txt" hidden><button id="upload-knowledge-button" class="knowledge-upload">上传本地知识文档</button><small class="upload-help">支持 PDF、Markdown、TXT · 单文件最大 5 MB · 提取文本写入 SQLite；Railway 跨部署保存需挂载数据卷</small></section>
+          <section class="knowledge-memory-card"><header><h2>会话记忆</h2><span>记忆已启用</span></header><dl><div><dt>会话 ID</dt><dd id="memory-session">正在创建</dd></div><div><dt>历史对话轮数</dt><dd id="memory-turns">0 轮</dd></div><div><dt>上下文策略</dt><dd>滚动摘要 + 最近 8 条</dd></div><div><dt>字符预算</dt><dd>最多 12,000 字符</dd></div><div><dt>存储边界</dt><dd>进程内存</dd></div></dl><button id="clear-memory">清空本次会话</button></section>
         </aside>
       </section>
     </main>`;

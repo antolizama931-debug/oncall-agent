@@ -11,3 +11,4 @@ dist/
 build/
 .tools/
 .visual-qa/
+data/
