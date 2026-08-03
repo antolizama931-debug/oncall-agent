@@ -10,6 +10,7 @@ os.environ["DEEPSEEK_API_KEY"] = ""
 os.environ["ONCALL_DATA_DIR"] = tempfile.mkdtemp(prefix="oncall-agent-tests-")
 
 from app.main import app, daily_usage, request_windows, status_client
+import app.main as main_module
 from app.real_data import GITHUB_STATUS_INCIDENTS
 
 
@@ -217,3 +218,116 @@ def test_github_pages_origin_is_allowed_without_credentials():
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "https://antolizama931-debug.github.io"
     assert response.headers.get("access-control-allow-credentials") != "true"
+
+
+def test_approved_run_executes_complete_dry_run_and_creates_reviewable_knowledge():
+    reset_rate_limits()
+    created = asyncio.run(
+        request(
+            "POST",
+            "/api/runs",
+            json={
+                "session_id": "closed-loop-test",
+                "incident": {
+                    "description": "数据库连接池耗尽导致订单接口持续超时，需要执行标准处置。",
+                    "service": "orders-api",
+                    "severity": "SEV-2",
+                    "signals": [
+                        {"kind": "metric", "name": "db.pool", "value": "100%"},
+                        {"kind": "log", "name": "db.timeout", "value": "increased"},
+                    ],
+                },
+            },
+        )
+    )
+    assert created.status_code == 201
+    run = created.json()
+    assert run["runbook"]["runbook_id"] == "RB-DATABASE-PRESSURE"
+
+    approved = asyncio.run(
+        request(
+            "POST",
+            f"/api/runs/{run['run_id']}/decision",
+            json={"decision": "approve", "operator": "test-operator"},
+        )
+    )
+    assert approved.json()["status"] == "approved"
+
+    executed = asyncio.run(
+        request(
+            "POST",
+            f"/api/runs/{run['run_id']}/execute",
+            json={
+                "operator": "test-operator",
+                "confirmation": "EXECUTE DRY RUN",
+                "simulated_result": "success",
+            },
+        )
+    )
+    assert executed.status_code == 200
+    body = executed.json()
+    assert body["status"] == "recovered"
+    assert body["execution"]["simulated"] is True
+    assert body["execution"]["validation_passed"] is True
+    assert body["approval"]["action_executed"] is False
+    assert body["knowledge_candidate"]["status"] == "pending-review"
+    assert [item["tool"] for item in body["tool_calls"][-3:]] == [
+        "runbook.execute",
+        "remediation.validate",
+        "knowledge.draft",
+    ]
+
+    reviewed = asyncio.run(
+        request(
+            "POST",
+            f"/api/runs/{run['run_id']}/knowledge-review",
+            json={"decision": "accept", "reviewer": "test-reviewer"},
+        )
+    )
+    assert reviewed.status_code == 200
+    assert reviewed.json()["knowledge_candidate"]["status"] == "accepted"
+
+
+def test_enterprise_alert_webhook_is_authenticated_and_deduplicated():
+    reset_rate_limits()
+    original_token = main_module.WEBHOOK_TOKEN
+    main_module.WEBHOOK_TOKEN = "test-webhook-token"
+    payload = {
+        "title": "订单接口数据库超时",
+        "description": "订单接口持续返回超时，数据库连接池利用率达到百分之百。",
+        "service": "orders-api",
+        "severity": "SEV-2",
+        "fingerprint": "orders-db-timeout-test",
+        "source": "test-alertmanager",
+        "signals": [{"kind": "metric", "name": "db.pool", "value": "100%"}],
+    }
+    try:
+        unauthorized = asyncio.run(request("POST", "/api/integrations/alerts", json=payload))
+        assert unauthorized.status_code == 401
+
+        first = asyncio.run(
+            request(
+                "POST",
+                "/api/integrations/alerts",
+                json=payload,
+                headers={"X-OnCall-Token": "test-webhook-token"},
+            )
+        )
+        assert first.status_code == 202
+        assert first.json()["duplicated"] is False
+        assert first.json()["run_id"]
+
+        second = asyncio.run(
+            request(
+                "POST",
+                "/api/integrations/alerts",
+                json=payload,
+                headers={"X-OnCall-Token": "test-webhook-token"},
+            )
+        )
+        assert second.status_code == 202
+        assert second.json()["duplicated"] is True
+        assert second.json()["occurrences"] == 2
+        assert second.json()["run_id"] == first.json()["run_id"]
+    finally:
+        main_module.WEBHOOK_TOKEN = original_token

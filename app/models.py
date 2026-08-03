@@ -44,6 +44,22 @@ class RunStatus(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     BLOCKED = "blocked"
+    EXECUTING = "executing"
+    VALIDATING = "validating"
+    RECOVERED = "recovered"
+    ROLLED_BACK = "rolled-back"
+    ESCALATED = "escalated"
+
+
+class ExecutionMode(str, Enum):
+    """How a runbook is allowed to operate.
+
+    The public deployment always uses ``DRY_RUN``. ``CONNECTOR`` is reserved for
+    a separately configured enterprise adapter with authentication and RBAC.
+    """
+
+    DRY_RUN = "dry-run"
+    CONNECTOR = "connector"
 
 
 class Signal(BaseModel):
@@ -178,6 +194,74 @@ class ToolCall(BaseModel):
     duration_ms: int = Field(ge=0)
 
 
+class RunbookStep(BaseModel):
+    sequence: int = Field(ge=1)
+    operation: str
+    description: str
+    mutating: bool = False
+
+
+class RunbookPlan(BaseModel):
+    runbook_id: str
+    name: str
+    version: str
+    risk_level: RiskLevel
+    execution_mode: ExecutionMode = ExecutionMode.DRY_RUN
+    auto_executable: bool = False
+    steps: list[RunbookStep]
+    validation_checks: list[str]
+    rollback_steps: list[str]
+
+
+class ExecutionStepResult(BaseModel):
+    sequence: int = Field(ge=1)
+    operation: str
+    status: str = Field(pattern="^(succeeded|failed|skipped)$")
+    output_summary: str
+    duration_ms: int = Field(ge=0)
+
+
+class RemediationExecution(BaseModel):
+    execution_id: str
+    mode: ExecutionMode
+    connector: str
+    simulated: bool = True
+    status: str = Field(pattern="^(recovered|rolled-back|escalated)$")
+    steps: list[ExecutionStepResult]
+    validation_passed: bool
+    validation_summary: str
+    rollback_performed: bool = False
+    rollback_summary: str | None = None
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ExecutionRequest(BaseModel):
+    operator: str = Field(default="public-demo-operator", min_length=2, max_length=120)
+    confirmation: str = Field(pattern="^EXECUTE DRY RUN$")
+    simulated_result: str = Field(default="success", pattern="^(success|failure)$")
+
+
+class KnowledgeCandidate(BaseModel):
+    candidate_id: str
+    title: str
+    source_run_id: str
+    status: str = Field(default="pending-review", pattern="^(pending-review|accepted|rejected)$")
+    summary: str
+    verified_facts: list[str]
+    root_cause: str
+    remediation: str
+    validation_result: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    reviewed_at: datetime | None = None
+    reviewer: str | None = None
+
+
+class KnowledgeReviewRequest(BaseModel):
+    decision: str = Field(pattern="^(accept|reject)$")
+    reviewer: str = Field(min_length=2, max_length=120)
+
+
 class ApprovalRecord(BaseModel):
     decision: str
     operator: str
@@ -205,7 +289,10 @@ class AgentRun(BaseModel):
     status: RunStatus
     tool_calls: list[ToolCall]
     analysis: IncidentAnalysis
+    runbook: RunbookPlan | None = None
     approval: ApprovalRecord | None = None
+    execution: RemediationExecution | None = None
+    knowledge_candidate: KnowledgeCandidate | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -219,6 +306,35 @@ class DashboardSummary(BaseModel):
     data_mode: str
     deepseek_configured: bool
     model: str
+    recovered_count: int = Field(default=0, ge=0)
+    rollback_count: int = Field(default=0, ge=0)
+    knowledge_candidate_count: int = Field(default=0, ge=0)
+
+
+class AlertEventRequest(BaseModel):
+    """Normalized enterprise alert accepted from a trusted webhook connector."""
+
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=300)]
+    description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=10, max_length=6000)]
+    service: str = Field(min_length=1, max_length=120)
+    severity: Severity = Severity.UNKNOWN
+    environment: str = Field(default="production", max_length=80)
+    status: str = Field(default="firing", pattern="^(firing|resolved)$")
+    fingerprint: str | None = Field(default=None, max_length=200)
+    source: str = Field(default="enterprise-webhook", max_length=120)
+    change_event: str | None = Field(default=None, max_length=500)
+    signals: list[Signal] = Field(default_factory=list, max_length=40)
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class AlertReceipt(BaseModel):
+    event_id: str
+    fingerprint: str
+    duplicated: bool
+    occurrences: int = Field(ge=1)
+    run_id: str | None = None
+    status: str
+    received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class KnowledgeDocument(BaseModel):

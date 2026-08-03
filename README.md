@@ -1,30 +1,43 @@
 # OnCall Agent
 
-基于真实公开事故数据的证据约束型事故响应智能体（Incident Response Agent）。后端使用 FastAPI，将观察事实、根因假设和处置建议分层；所有生产写操作均被限制为人工审批或禁止。
+面向高频、标准化、低风险事故的自动值守智能体（OnCall Agent）。系统接收企业告警或真实公开事故，完成告警去重、证据聚合、根因假设、版本化 Runbook 匹配、策略审批、处置演练、恢复验证、失败回滚和知识候选沉淀。
+
+当前公开部署使用安全演练模式（Dry Run），不会连接企业生产权限。它展示完整控制闭环，但不把模拟结果冒充为真实修复。真实企业部署需要单独配置监控、日志、Trace、Kubernetes 或云平台连接器，并通过 RBAC、允许列表、审批、变更窗口和自动回滚限制权限。
+
+## 原版项目参考边界
+
+实现参考了 `super_biz_agent_py-release-2026-05-17` 的 Plan-Execute-Replan 和 MCP 工具网关分层，但没有直接复制其模拟监控、模拟日志或带删除命令的通用文档：
+
+- 保留：规划与工具分离、工具动态接入、最大执行步数、失败后继续或升级；
+- 强化：证据与假设分离、告警去重、版本化 Runbook、人工审批、恢复验证、回滚和知识审核；
+- 拒绝迁移：随机生成的指标、Mock 日志、未经资源限定的 Shell 命令，以及未经审核的自动知识发布。
 
 **Railway 公网地址：** https://oncall-agent-production-4c9c.up.railway.app
 
 ## 产品界面
 
 - `#landing`：产品落地页，展示运行边界、真实数据和五阶段执行模型。
-- `#home`：事故控制台，浏览 GitHub、Cloudflare、Datadog 官方状态页事故、会话内运行记录和审批数量。
+- `#home`：事故控制台，浏览真实事故、启动调查，并查看审批、恢复验证、回滚和知识候选状态。
 - `#/customer-service`：知识库 Agent 工作台，支持提问、文档上传、检索引用和会话记忆。
 - `#/incidents/{scenario_key}`：深色调查工作台，可启动真实 Agent Run。
-- `#/runs/{run_id}`：回放工具调用、证据、假设、建议和人工决策。
+- `#/runs/{run_id}`：回放调查工具、证据、假设、Runbook、审批、处置、验证和复盘候选。
 
 前端为无构建依赖的单页应用（Single-Page Application, SPA），与 FastAPI 同源部署。
 
 ## Agent 运行时
 
-每次 `Agent Run` 会真实经过五个可审计阶段：
+每次 `Agent Run` 最多经过八个可审计阶段：
 
 1. `statuspage.read` / `incident.input`：读取固定官方状态页或接收脱敏输入；
 2. `evidence.normalize`：把观察事实与推测分开；
 3. `diagnosis.rank`：生成并排序可验证假设；
 4. `citations.validate`：校验证据引用；
 5. `policy.gate`：根据风险决定完成、审批或阻断。
+6. `runbook.execute`：执行已经批准的版本化 Runbook；公开站只调用演练连接器；
+7. `remediation.validate`：检查恢复条件，失败时进入回滚与人工升级；
+8. `knowledge.draft`：生成待审核事故复盘，不直接污染正式知识库。
 
-运行记录采用有上限的进程内存储（Process-local Store），服务重启后会清空。审批端点只记录操作员决定，`action_executed` 固定为 `false`，不会伪装成已连接生产系统。
+Agent Run、审批、处置结果、知识候选和企业告警去重状态写入 `data/runtime.db`（SQLite）。公开站的审批只授权安全演练，`approval.action_executed` 仍为 `false`，明确表示没有执行真实生产写操作。
 
 主要 API：
 
@@ -35,6 +48,10 @@
 | `POST` | `/api/runs` | 从场景或自定义事件启动 Agent Run |
 | `GET` | `/api/runs/{run_id}` | 获取完整审计轨迹 |
 | `POST` | `/api/runs/{run_id}/decision` | 记录批准或拒绝，不执行生产动作 |
+| `POST` | `/api/runs/{run_id}/execute` | 对已批准 Runbook 执行成功或失败分支演练 |
+| `POST` | `/api/runs/{run_id}/knowledge-review` | 接收或拒绝事故知识候选 |
+| `POST` | `/api/integrations/alerts` | 接收经过令牌认证的企业告警并按指纹去重 |
+| `GET` | `/api/alerts` | 查看已经归一化的企业告警收件箱 |
 | `POST` | `/api/knowledge/documents` | 上传并解析 PDF、Markdown 或 TXT |
 | `GET` | `/api/knowledge/status` | 获取文档、分块和检索器状态 |
 | `POST` | `/api/chat` | 执行检索增强问答并写入会话记忆 |
@@ -95,6 +112,10 @@ ONCALL_MAX_DOCUMENTS=20
 ONCALL_MAX_SESSIONS=100
 ONCALL_MAX_SESSION_MESSAGES=16
 ONCALL_DENSE_MIN_SCORE=0.36
+ONCALL_WEBHOOK_TOKEN=请生成高强度随机值
+ONCALL_TOOL_GATEWAY_URL=https://企业私网中的工具网关
+ONCALL_TOOL_GATEWAY_TOKEN=只读工具网关凭据
+ONCALL_TOOL_GATEWAY_TIMEOUT_SECONDS=5
 
 DEEPSEEK_API_KEY=你的服务端密钥
 DEEPSEEK_BASE_URL=https://api.deepseek.com
@@ -104,13 +125,26 @@ DEEPSEEK_MAX_TOKENS=2200
 
 密钥只能配置在服务端环境变量中，不得写入 `frontend/` 或 Git。DeepSeek 官方在 2026-07-31 发布的 V4 Flash API 仍使用 `deepseek-v4-flash` 模型名。
 
+### 企业只读工具网关契约
+
+配置工具网关后，自定义事故和企业 Webhook 告警会并行调用四个固定路径：
+
+| 工具 | 固定路径 | 作用 |
+|---|---|---|
+| `telemetry.metrics.query` | `/v1/metrics/query` | 查询指标窗口 |
+| `telemetry.logs.search` | `/v1/logs/search` | 检索错误日志 |
+| `telemetry.traces.search` | `/v1/traces/search` | 查询异常 Trace |
+| `telemetry.changes.read` | `/v1/changes/recent` | 读取最近部署和配置变更 |
+
+请求只包含服务名、环境、30 分钟窗口和截断后的事故描述。响应中的 `signals` 与 `artifacts` 会经过数量和长度限制后进入证据层；任一工具失败会写入审计轨迹，但不会伪造替代数据。网关 URL 只能由服务端环境变量配置，用户请求不能指定任意地址。
+
 ## 测试
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-测试覆盖：真实事故映射、HTML 清理、来源追踪、上游失败快照回退、BM25 与 BGE 中文语义召回、RRF 状态、证据引用校验、危险建议阻断、Agent 五阶段轨迹、人工审批边界和 API 端到端流程。
+测试覆盖：真实事故映射、HTML 清理、来源追踪、上游失败快照回退、BM25 与 BGE 中文语义召回、RRF 状态、证据引用校验、危险建议阻断、企业告警认证与去重、只读工具网关成功与降级分支、Runbook 选择、人工审批、处置演练、恢复验证、回滚分支、知识审核和 API 端到端流程。
 
 ## Railway 部署
 
@@ -125,7 +159,7 @@ DEEPSEEK_MAX_TOKENS=2200
 ```powershell
 railway login
 railway init
-railway variables set ONCALL_ENV=production ONCALL_ALLOW_RULE_FALLBACK=true ONCALL_STATUS_CACHE_SECONDS=300 ONCALL_STATUS_SCENARIO_LIMIT=36 ONCALL_STATUS_PER_SOURCE_LIMIT=12 ONCALL_MAX_RUNS=100 ONCALL_MEMORY_RECENT_MESSAGES=8 ONCALL_MEMORY_SUMMARY_CHARS=2400 ONCALL_CONTEXT_MAX_CHARS=12000
+railway variables set ONCALL_ENV=production ONCALL_ALLOW_RULE_FALLBACK=true ONCALL_STATUS_CACHE_SECONDS=300 ONCALL_STATUS_SCENARIO_LIMIT=36 ONCALL_STATUS_PER_SOURCE_LIMIT=12 ONCALL_MAX_RUNS=100 ONCALL_MEMORY_RECENT_MESSAGES=8 ONCALL_MEMORY_SUMMARY_CHARS=2400 ONCALL_CONTEXT_MAX_CHARS=12000 ONCALL_WEBHOOK_TOKEN=请生成高强度随机值
 railway variables set DEEPSEEK_API_KEY=你的密钥 DEEPSEEK_BASE_URL=https://api.deepseek.com DEEPSEEK_MODEL=deepseek-v4-flash DEEPSEEK_MAX_TOKENS=2200
 railway up
 railway domain
@@ -152,4 +186,7 @@ railway domain
 - 三个官方状态页 URL 均在后端固定，不接受用户提供的主机，避免服务端请求伪造（Server-Side Request Forgery, SSRF）。
 - 外部状态文本在后端去除 HTML，前端使用 `textContent` 构建节点，避免跨站脚本（Cross-Site Scripting, XSS）。
 - 上传内容会发送给已配置的 DeepSeek API；上传前必须删除密钥、令牌、个人信息和其他敏感数据。
-- 公共应用不执行 Shell、数据库写入、流量切换或自动回滚。
+- 公共应用不执行 Shell、生产数据库写入、流量切换或真实自动回滚；仅写入自身的 SQLite 审计数据。
+- 告警 Webhook 在未配置 `ONCALL_WEBHOOK_TOKEN` 时返回 `503`，凭据错误时返回 `401`；相同指纹的重复告警只更新计数，不重复启动 Agent Run。
+- 处置端点只调用内置安全演练连接器。真实连接器必须部署在私有网络，并实现资源允许列表、最小权限、幂等、超时、熔断、恢复验证和回滚。
+- 自动生成的事故知识默认处于 `pending-review`，审核前不会进入正式 RAG 语料库。

@@ -8,27 +8,35 @@ from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile, status
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
+from .alerts import AlertInboxStore
+from .connectors import EnterpriseToolGateway
 from .deepseek import DeepSeekClient, DeepSeekError
 from .engine import analyze_incident
 from .models import (
     AgentRun,
     AgentRunRequest,
+    AlertEventRequest,
+    AlertReceipt,
     ApprovalRequest,
     ChatMessage,
     DashboardSummary,
+    ExecutionRequest,
     IncidentAnalysis,
     IncidentRequest,
     KnowledgeChatRequest,
     KnowledgeChatResponse,
     KnowledgeDocument,
+    KnowledgeReviewRequest,
     KnowledgeStatus,
     Scenario,
+    Signal,
+    SignalKind,
 )
 from .runtime import AgentRunStore
 from .knowledge import KnowledgeBaseStore, MAX_FILE_BYTES, SessionMemoryStore
@@ -47,6 +55,9 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash").strip()
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip()
 DEEPSEEK_MAX_TOKENS = int(os.getenv("DEEPSEEK_MAX_TOKENS", "2200"))
 ALLOW_RULE_FALLBACK = os.getenv("ONCALL_ALLOW_RULE_FALLBACK", "true").lower() == "true"
+WEBHOOK_TOKEN = os.getenv("ONCALL_WEBHOOK_TOKEN", "").strip()
+TOOL_GATEWAY_URL = os.getenv("ONCALL_TOOL_GATEWAY_URL", "").strip()
+TOOL_GATEWAY_TOKEN = os.getenv("ONCALL_TOOL_GATEWAY_TOKEN", "").strip()
 STATUS_CACHE_SECONDS = int(os.getenv("ONCALL_STATUS_CACHE_SECONDS", "300"))
 STATUS_SCENARIO_LIMIT = int(os.getenv("ONCALL_STATUS_SCENARIO_LIMIT", "36"))
 STATUS_PER_SOURCE_LIMIT = int(os.getenv("ONCALL_STATUS_PER_SOURCE_LIMIT", "12"))
@@ -74,7 +85,16 @@ status_client = MultiStatusClient(
     scenario_limit=STATUS_SCENARIO_LIMIT,
     per_source_limit=STATUS_PER_SOURCE_LIMIT,
 )
-run_store = AgentRunStore(max_runs=int(os.getenv("ONCALL_MAX_RUNS", "100")))
+run_store = AgentRunStore(
+    max_runs=int(os.getenv("ONCALL_MAX_RUNS", "100")),
+    data_dir=DATA_DIR,
+)
+alert_store = AlertInboxStore(data_dir=DATA_DIR)
+tool_gateway = EnterpriseToolGateway(
+    base_url=TOOL_GATEWAY_URL,
+    token=TOOL_GATEWAY_TOKEN,
+    timeout_seconds=float(os.getenv("ONCALL_TOOL_GATEWAY_TIMEOUT_SECONDS", "5")),
+)
 knowledge_store = KnowledgeBaseStore(
     max_documents=int(os.getenv("ONCALL_MAX_DOCUMENTS", "50")),
     data_dir=DATA_DIR,
@@ -88,8 +108,8 @@ memory_store = SessionMemoryStore(
 
 app = FastAPI(
     title="OnCall Agent API",
-    version="0.4.0",
-    description="基于多源真实事故、持久化混合检索和人工审批门控的 OnCall Agent 运行时。",
+    version="0.5.0",
+    description="具备告警接入、诊断、Runbook 审批、处置演练、验证回滚与知识沉淀的 OnCall Agent。",
 )
 
 # Same-origin deployment does not need CORS. Localhost origins are allowed only for
@@ -110,7 +130,13 @@ daily_usage: dict[str, tuple[str, int]] = {}
 @app.middleware("http")
 async def security_and_rate_limit(request: Request, call_next):
     now = time.monotonic()
-    if request.url.path in {"/api/analyze", "/api/runs", "/api/chat", "/api/knowledge/documents"}:
+    if request.url.path in {
+        "/api/analyze",
+        "/api/runs",
+        "/api/chat",
+        "/api/knowledge/documents",
+        "/api/integrations/alerts",
+    }:
         client = request.client.host if request.client else "unknown"
         window = request_windows[client]
         while window and now - window[0] > WINDOW_SECONDS:
@@ -149,8 +175,12 @@ def health() -> dict[str, str | bool | int]:
         "fallback_enabled": ALLOW_RULE_FALLBACK,
         "incident_source": "、".join(status_client.source_names),
         "incident_data_mode": status_client.last_mode,
-        "run_store": "process-local",
+        "run_store": "SQLite 持久化",
         "run_count": run_store.count(),
+        "alert_count": len(alert_store.list()),
+        "execution_mode": "dry-run",
+        "webhook_configured": bool(WEBHOOK_TOKEN),
+        "tool_gateway_configured": tool_gateway.configured,
         "knowledge_document_count": knowledge_store.status().document_count,
         "memory_session_count": memory_store.count(),
     }
@@ -221,6 +251,9 @@ async def dashboard() -> DashboardSummary:
         data_mode=status_client.last_mode,
         deepseek_configured=deepseek_client is not None,
         model=DEEPSEEK_MODEL,
+        recovered_count=run_store.recovered_count(),
+        rollback_count=run_store.rollback_count(),
+        knowledge_candidate_count=run_store.knowledge_candidate_count(),
     )
 
 
@@ -236,12 +269,16 @@ async def create_run(payload: AgentRunRequest) -> AgentRun:
         incident = scenario.request
     if incident is None:  # Defensive; Pydantic already enforces this invariant.
         raise HTTPException(status_code=422, detail="必须提供事故输入")
+    investigation_tools = []
+    if scenario is None:
+        incident, investigation_tools = await tool_gateway.collect(incident)
     analysis = await _analyze_payload(incident)
     return run_store.create(
         request=incident,
         analysis=analysis,
         session_id=payload.session_id,
         scenario=scenario,
+        investigation_tools=investigation_tools,
     )
 
 
@@ -267,6 +304,89 @@ def decide_run(run_id: str, payload: ApprovalRequest) -> AgentRun:
     if run is None:
         raise HTTPException(status_code=404, detail="未找到该运行记录")
     return run
+
+
+@app.post("/api/runs/{run_id}/execute", response_model=AgentRun)
+def execute_run(run_id: str, payload: ExecutionRequest) -> AgentRun:
+    """Execute an approved run through the built-in non-production drill adapter."""
+    try:
+        run = run_store.execute(run_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if run is None:
+        raise HTTPException(status_code=404, detail="未找到该运行记录")
+    return run
+
+
+@app.post("/api/runs/{run_id}/knowledge-review", response_model=AgentRun)
+def review_run_knowledge(run_id: str, payload: KnowledgeReviewRequest) -> AgentRun:
+    """Review a generated post-incident candidate before knowledge publication."""
+    try:
+        run = run_store.review_knowledge(run_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if run is None:
+        raise HTTPException(status_code=404, detail="未找到该运行记录")
+    return run
+
+
+@app.get("/api/alerts", response_model=list[AlertReceipt])
+def list_alerts() -> list[AlertReceipt]:
+    return alert_store.list()
+
+
+@app.post("/api/integrations/alerts", response_model=AlertReceipt, status_code=status.HTTP_202_ACCEPTED)
+async def ingest_enterprise_alert(
+    payload: AlertEventRequest,
+    x_oncall_token: str | None = Header(default=None, alias="X-OnCall-Token"),
+) -> AlertReceipt:
+    """Receive a trusted alert, deduplicate it, and start one investigation run.
+
+    Production deployment must configure ``ONCALL_WEBHOOK_TOKEN``. Repeated
+    notifications with the same fingerprint update the occurrence counter rather
+    than starting duplicate investigations.
+    """
+    if not WEBHOOK_TOKEN:
+        raise HTTPException(status_code=503, detail="企业告警 Webhook 尚未配置")
+    if x_oncall_token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="告警 Webhook 凭据无效")
+
+    receipt = alert_store.ingest(payload)
+    if receipt.run_id or payload.status == "resolved":
+        return receipt
+
+    signals = list(payload.signals)
+    signals.append(
+        Signal(
+            kind=SignalKind.ALERT,
+            name="alert.title",
+            value=payload.title,
+            source=payload.source,
+            display_name="监控系统告警",
+            display_value=payload.title,
+        )
+    )
+    incident = IncidentRequest(
+        description=payload.description,
+        service=payload.service,
+        severity=payload.severity,
+        environment=payload.environment,
+        change_event=payload.change_event,
+        signals=signals,
+        source_name=payload.source,
+        source_incident_id=receipt.event_id,
+    )
+    incident, investigation_tools = await tool_gateway.collect(incident)
+    analysis = await _analyze_payload(incident)
+    run = run_store.create(
+        request=incident,
+        analysis=analysis,
+        session_id=f"alert:{receipt.fingerprint}",
+        investigation_tools=investigation_tools,
+    )
+    alert_store.link_run(receipt.fingerprint, run.run_id)
+    receipt.run_id = run.run_id
+    return receipt
 
 
 @app.get("/api/knowledge/status", response_model=KnowledgeStatus)
