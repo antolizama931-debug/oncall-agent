@@ -17,6 +17,18 @@ services:
         value: "30"
       - key: ONCALL_ALLOW_RULE_FALLBACK
         value: "true"
+      - key: ONCALL_STATUS_CACHE_SECONDS
+        value: "300"
+      - key: ONCALL_STATUS_SCENARIO_LIMIT
+        value: "6"
+      - key: ONCALL_MAX_RUNS
+        value: "100"
+      - key: ONCALL_MAX_DOCUMENTS
+        value: "20"
+      - key: ONCALL_MAX_SESSIONS
+        value: "100"
+      - key: ONCALL_MAX_SESSION_MESSAGES
+        value: "16"
       - key: DEEPSEEK_API_KEY
         sync: false
       - key: DEEPSEEK_BASE_URL

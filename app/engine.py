@@ -102,10 +102,13 @@ def _make_incident_id(request: IncidentRequest) -> str:
 
 
 def _build_evidence(request: IncidentRequest) -> list[Evidence]:
+    report_source = "user_report"
+    if request.source_name and request.source_incident_id:
+        report_source = f"{request.source_name.lower().replace(' ', '_')}:{request.source_incident_id}"
     evidence = [
         Evidence(
             evidence_id="E-001",
-            source="user_report",
+            source=report_source,
             statement=request.description,
             relevance=0.72,
         )
@@ -243,6 +246,10 @@ def analyze_incident(request: IncidentRequest) -> IncidentAnalysis:
         "Confidence is a deterministic heuristic and must not be interpreted as a measured probability.",
         "The public demo has no production credentials and cannot execute remediation commands.",
     ]
+    if request.source_url:
+        limitations.append(
+            f"This is a replay of public status updates ({request.source_url}), not private production telemetry."
+        )
     if len(request.signals) < 2:
         limitations.append("Fewer than two structured signals were supplied; collect more telemetry.")
 

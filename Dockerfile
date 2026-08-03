@@ -13,5 +13,6 @@ COPY frontend ./frontend
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
+# Railway injects PORT at runtime. Shell expansion is required here so Uvicorn
+# listens on the platform-assigned port; local Docker falls back to 8000.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

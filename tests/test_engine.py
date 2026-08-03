@@ -1,10 +1,25 @@
 from app.engine import analyze_incident
-from app.fixtures import SCENARIOS
-from app.models import Artifact, IncidentRequest, RiskLevel
+from app.models import Artifact, IncidentRequest, RiskLevel, Severity, Signal, SignalKind
+
+
+def latency_request() -> IncidentRequest:
+    """Controlled unit-test input; public demo data lives in app.real_data."""
+    return IncidentRequest(
+        description=(
+            "Checkout p95 latency increased after deployment with HTTP 503 errors and retries."
+        ),
+        service="payment-api",
+        severity=Severity.SEV1,
+        change_event="deploy completed before the latency increase",
+        signals=[
+            Signal(kind=SignalKind.METRIC, name="retry_rate", value="increased"),
+            Signal(kind=SignalKind.LOG, name="upstream", value="HTTP 503"),
+        ],
+    )
 
 
 def test_latency_scenario_ranks_retry_amplification_first():
-    result = analyze_incident(SCENARIOS["latency"].request)
+    result = analyze_incident(latency_request())
 
     assert result.hypotheses[0].title == "Retry amplification after a service change"
     assert result.hypotheses[0].confidence >= 0.80
@@ -13,7 +28,13 @@ def test_latency_scenario_ranks_retry_amplification_first():
 
 
 def test_memory_scenario_uses_only_supplied_evidence():
-    request = SCENARIOS["memory"].request
+    request = IncidentRequest(
+        description="Workers restart after memory grows to the container limit with OOMKilled.",
+        service="search-worker",
+        severity=Severity.SEV2,
+        change_event="cache feature enabled before memory growth",
+        signals=[Signal(kind=SignalKind.METRIC, name="rss", value="monotonic growth")],
+    )
     result = analyze_incident(request)
 
     supplied = {request.description, request.change_event}
@@ -33,7 +54,12 @@ def test_insufficient_evidence_does_not_invent_root_cause():
 
 
 def test_analysis_is_deterministic():
-    request = SCENARIOS["database"].request
+    request = IncidentRequest(
+        description="Database writes timeout because the connection pool is full.",
+        service="orders-api",
+        severity=Severity.SEV2,
+        signals=[Signal(kind=SignalKind.METRIC, name="db.pool", value="100%")],
+    )
     first = analyze_incident(request)
     second = analyze_incident(request)
 
