@@ -13,6 +13,7 @@ services:
       ONCALL_MAX_DOCUMENTS: 20
       ONCALL_MAX_SESSIONS: 100
       ONCALL_MAX_SESSION_MESSAGES: 16
+      ONCALL_DENSE_MIN_SCORE: 0.36
       DEEPSEEK_MODEL: deepseek-v4-flash
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
     restart: unless-stopped

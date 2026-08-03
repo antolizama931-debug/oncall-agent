@@ -21,7 +21,7 @@ def latency_request() -> IncidentRequest:
 def test_latency_scenario_ranks_retry_amplification_first():
     result = analyze_incident(latency_request())
 
-    assert result.hypotheses[0].title == "Retry amplification after a service change"
+    assert result.hypotheses[0].title == "服务变更后出现重试放大"
     assert result.hypotheses[0].confidence >= 0.80
     assert result.recommendation.risk_level == RiskLevel.APPROVAL_REQUIRED
     assert result.recommendation.approval_required is True
@@ -40,7 +40,7 @@ def test_memory_scenario_uses_only_supplied_evidence():
     supplied = {request.description, request.change_event}
     supplied.update(f"{signal.name}: {signal.value}" for signal in request.signals)
     assert all(item.statement in supplied for item in result.evidence)
-    assert result.hypotheses[0].title == "Memory leak or unbounded cache growth"
+    assert result.hypotheses[0].title == "内存泄漏或缓存无上限增长"
 
 
 def test_insufficient_evidence_does_not_invent_root_cause():
@@ -48,7 +48,7 @@ def test_insufficient_evidence_does_not_invent_root_cause():
     result = analyze_incident(request)
 
     assert result.hypotheses[0].confidence < 0.5
-    assert "Insufficient evidence" in result.hypotheses[0].title
+    assert "证据不足" in result.hypotheses[0].title
     assert result.recommendation.risk_level == RiskLevel.READ_ONLY
     assert result.recommendation.approval_required is False
 

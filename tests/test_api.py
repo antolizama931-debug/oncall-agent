@@ -154,7 +154,12 @@ def test_knowledge_upload_retrieval_chat_and_session_memory():
     status_response = asyncio.run(request("GET", "/api/knowledge/status"))
     assert status_response.status_code == 200
     assert status_response.json()["document_count"] >= 1
-    assert status_response.json()["retriever"] == "BM25 lexical"
+    status_body = status_response.json()
+    assert status_body["retrieval_mode"] == "混合检索 RAG"
+    assert "BM25" in status_body["retriever"]
+    assert "BGE" in status_body["retriever"]
+    assert status_body["source_document_count"] >= 1
+    assert "GitHub Status 真实事故" in status_body["source_types"]
 
     answered = asyncio.run(
         request(
@@ -167,6 +172,7 @@ def test_knowledge_upload_retrieval_chat_and_session_memory():
     body = answered.json()
     assert body["analysis_mode"] == "retrieval-unconfigured"
     assert body["citations"][0]["document_name"] == "payment-runbook.md"
+    assert body["citations"][0]["retrieval_signals"]
     assert body["memory_turns"] == 1
 
     history = asyncio.run(request("GET", f"/api/sessions/{session_id}"))

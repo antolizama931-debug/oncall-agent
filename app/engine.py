@@ -37,52 +37,52 @@ class DiagnosticRule:
 
 RULES: tuple[DiagnosticRule, ...] = (
     DiagnosticRule(
-        title="Retry amplification after a service change",
+        title="服务变更后出现重试放大",
         keywords=("retry", "503", "deployment", "deploy", "latency", "fan-out"),
-        rationale="A recent change and increased retries can multiply downstream work and inflate tail latency.",
+        rationale="近期变更与重试增加可能放大下游请求量，并抬高尾部时延。",
         verification=(
-            "Compare retry rate and downstream request fan-out before and after the change.",
-            "Replay one request with retries disabled in a safe environment.",
+            "对比变更前后的重试率与下游请求扇出数量。",
+            "在安全环境中关闭重试并回放一条代表性请求。",
         ),
-        action="Prepare a reviewed rollback of the recent service change and temporarily cap retries.",
-        validation=("Track p95 latency for 10 minutes.", "Confirm error and retry rates return to baseline."),
-        rollback="Re-enable the change only after the retry policy is corrected and load-tested.",
+        action="准备经过人工复核的近期变更回滚方案，并临时限制重试次数。",
+        validation=("持续观察 p95 时延 10 分钟。", "确认错误率和重试率恢复到基线。"),
+        rollback="修正重试策略并完成压力测试后，才能重新启用该变更。",
     ),
     DiagnosticRule(
-        title="Database connection-pool exhaustion",
+        title="数据库连接池耗尽",
         keywords=("database", "db", "connection", "pool", "query", "timeout", "lock"),
-        rationale="Pool saturation or a long-running query can block new requests and cause write timeouts.",
+        rationale="连接池饱和或长时间查询会阻塞新请求，并导致写入超时。",
         verification=(
-            "Inspect active connections, wait events, and the longest-running queries.",
-            "Check whether application timeouts align with pool saturation.",
+            "检查活动连接、等待事件和运行时间最长的查询。",
+            "核对应用超时是否与连接池饱和时间一致。",
         ),
-        action="Review cancellation of the dominant query and reduce non-critical database traffic.",
-        validation=("Confirm pool utilization falls below 80%.", "Verify write latency and timeout rate recover."),
-        rollback="Stop the intervention if write errors increase; restore the previous traffic policy.",
+        action="人工评估是否终止占用最高的查询，并减少非关键数据库流量。",
+        validation=("确认连接池利用率降到 80% 以下。", "确认写入时延与超时率恢复。"),
+        rollback="若写入错误增加，立即停止干预并恢复原流量策略。",
     ),
     DiagnosticRule(
-        title="Memory leak or unbounded cache growth",
+        title="内存泄漏或缓存无上限增长",
         keywords=("memory", "oom", "oomkilled", "cache", "rss", "heap", "restart"),
-        rationale="Monotonic memory growth followed by OOM termination is consistent with leaked or unbounded state.",
+        rationale="内存持续单调增长并最终触发 OOM，符合状态泄漏或缓存无上限增长的特征。",
         verification=(
-            "Correlate resident memory with cache cardinality and request volume.",
-            "Compare heap profiles before and after the suspected feature was enabled.",
+            "关联分析常驻内存、缓存基数和请求量。",
+            "对比可疑功能启用前后的堆内存分析结果。",
         ),
-        action="Disable the suspected cache feature behind an approval gate and replace workers gradually.",
-        validation=("Confirm resident memory plateaus.", "Verify restart and OOMKilled events stop."),
-        rollback="Restore the flag if disabling it causes correctness failures; retain reduced traffic.",
+        action="通过审批门控关闭可疑缓存功能，并逐步替换工作进程。",
+        validation=("确认常驻内存进入稳定平台期。", "确认重启和 OOMKilled 事件停止。"),
+        rollback="若关闭功能引发正确性问题，恢复功能开关并继续限制流量。",
     ),
     DiagnosticRule(
-        title="Network or downstream dependency degradation",
+        title="网络或下游依赖服务性能下降",
         keywords=("network", "dns", "connection reset", "upstream", "downstream", "packet", "503"),
-        rationale="Transport failures or an unhealthy dependency can surface as timeouts and upstream errors.",
+        rationale="传输故障或异常依赖服务可能表现为请求超时和上游错误。",
         verification=(
-            "Compare dependency health across zones and instances.",
-            "Inspect DNS resolution, connection resets, and trace spans at the failure boundary.",
+            "对比不同可用区和实例的依赖健康状态。",
+            "检查故障边界处的 DNS 解析、连接重置和 Trace Span。",
         ),
-        action="Shift a limited share of traffic to a healthy dependency instance after approval.",
-        validation=("Confirm transport errors decline.", "Compare latency and success rate across routes."),
-        rollback="Return traffic to the original route if the alternate path degrades.",
+        action="审批通过后，将少量流量切换到健康的依赖实例。",
+        validation=("确认传输错误数量下降。", "对比不同路由的时延和成功率。"),
+        rollback="若备用路径性能下降，将流量恢复到原路由。",
     ),
 )
 
@@ -163,13 +163,13 @@ def _rank_hypotheses(request: IncidentRequest, evidence: list[Evidence]) -> list
     if not scored:
         return [
             Hypothesis(
-                title="Insufficient evidence for a defensible root-cause hypothesis",
+                title="证据不足，无法形成可辩护的根因假设",
                 confidence=0.30,
-                rationale="The report does not contain enough discriminating telemetry to rank a cause.",
+                rationale="当前事故信息缺少具有区分性的遥测数据，无法可靠排序根因。",
                 supporting_evidence=[evidence[0].evidence_id],
                 verification=[
-                    "Collect service error rate, latency, saturation, and recent change events.",
-                    "Add representative logs or traces from the failure window.",
+                    "补充服务错误率、时延、饱和度和近期变更事件。",
+                    "补充故障时间窗口内具有代表性的日志或 Trace。",
                 ],
             )
         ]
@@ -200,11 +200,11 @@ def _build_recommendation(request: IncidentRequest, hypotheses: list[Hypothesis]
     primary = hypotheses[0]
     if primary.confidence < 0.5:
         return Recommendation(
-            action="Collect additional read-only telemetry before proposing a production change.",
+            action="提出生产变更前，先补充只读遥测证据。",
             risk_level=RiskLevel.READ_ONLY,
             approval_required=False,
-            validation=["Re-run analysis after adding metrics, logs, traces, and recent changes."],
-            rollback="No production mutation is proposed.",
+            validation=["补充指标、日志、Trace 和近期变更后重新运行分析。"],
+            rollback="当前没有提出任何生产写操作。",
         )
 
     rule = next((item for item in RULES if item.title == primary.title), None)
@@ -233,31 +233,31 @@ def analyze_incident(request: IncidentRequest) -> IncidentAnalysis:
     service = re.sub(r"[^a-zA-Z0-9_.-]", "", request.service) or "unknown-service"
 
     trace = [
-        TraceStep(stage="observe", message=f"Normalized {len(evidence)} evidence records", duration_ms=18),
-        TraceStep(stage="correlate", message="Aligned report, signals, and change events", duration_ms=31),
-        TraceStep(stage="diagnose", message=f"Ranked {len(hypotheses)} testable hypotheses", duration_ms=47),
+        TraceStep(stage="observe", message=f"已规范化 {len(evidence)} 条证据记录", duration_ms=18),
+        TraceStep(stage="correlate", message="已对齐事故报告、信号和变更事件", duration_ms=31),
+        TraceStep(stage="diagnose", message=f"已排序 {len(hypotheses)} 个可验证假设", duration_ms=47),
         TraceStep(
             stage="gate",
-            message=f"Mapped recommendation to {recommendation.risk_level.value}",
+            message=f"处置建议已映射为 {recommendation.risk_level.value} 风险边界",
             duration_ms=12,
         ),
     ]
     limitations = [
-        "Confidence is a deterministic heuristic and must not be interpreted as a measured probability.",
-        "The public demo has no production credentials and cannot execute remediation commands.",
+        "置信度是确定性启发式评分，不能解释为经过测量的统计概率。",
+        "公开演示没有生产凭据，不能执行修复命令。",
     ]
     if request.source_url:
         limitations.append(
-            f"This is a replay of public status updates ({request.source_url}), not private production telemetry."
+            f"这是公开状态更新的事故回放（{request.source_url}），不包含私有生产遥测。"
         )
     if len(request.signals) < 2:
-        limitations.append("Fewer than two structured signals were supplied; collect more telemetry.")
+        limitations.append("当前结构化信号少于两条，需要补充更多遥测。")
 
     return IncidentAnalysis(
         incident_id=_make_incident_id(request),
         summary=(
-            f"{request.severity.value} incident affecting {service}. "
-            f"Primary hypothesis: {primary.title} ({primary.confidence:.0%} confidence)."
+            f"{request.severity.value} 事故影响 {service}。"
+            f"首要根因假设：{primary.title}（置信度 {primary.confidence:.0%}）。"
         ),
         evidence=evidence,
         hypotheses=hypotheses,

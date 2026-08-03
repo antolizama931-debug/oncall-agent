@@ -92,7 +92,7 @@ def test_dangerous_model_action_is_blocked():
     result = asyncio.run(client.analyze(SCENARIOS["github-q27ttsnp0x4g"].request))
 
     assert result.recommendation.risk_level == RiskLevel.BLOCKED
-    assert "blocked" in result.recommendation.action.lower()
+    assert "阻断" in result.recommendation.action
 
 
 def test_knowledge_answer_receives_bounded_memory_and_citation_context():
