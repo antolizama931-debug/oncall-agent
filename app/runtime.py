@@ -128,6 +128,7 @@ class AgentRunStore:
             session_id=session_id,
             scenario_key=scenario.key if scenario else None,
             title=scenario.title if scenario else request.description[:120],
+            display_title=scenario.display_title if scenario else request.description[:120],
             service=request.service,
             severity=request.severity,
             source_name=request.source_name,

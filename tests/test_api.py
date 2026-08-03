@@ -66,6 +66,9 @@ def test_scenarios_expose_verifiable_provenance():
     assert scenario["source_name"] == "GitHub Status"
     assert scenario["source_url"].startswith("https://www.githubstatus.com/incidents/")
     assert scenario["data_mode"] in {"live", "verified-snapshot"}
+    assert scenario["display_title"]
+    assert scenario["display_summary"]
+    assert scenario["request"]["signals"][0]["display_name"].startswith("第 ")
 
 
 def test_invalid_short_description_is_rejected():
@@ -90,6 +93,7 @@ def test_agent_run_records_tools_and_requires_non_executing_approval():
     assert created.status_code == 201
     run = created.json()
     assert run["status"] == "awaiting-approval"
+    assert run["display_title"]
     assert [item["tool"] for item in run["tool_calls"]] == [
         "statuspage.read",
         "evidence.normalize",

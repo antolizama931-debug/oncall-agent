@@ -87,6 +87,84 @@ def _severity(impact: str) -> Severity:
     }.get(impact.lower(), Severity.UNKNOWN)
 
 
+STATUS_LABELS_ZH = {
+    "investigating": "调查中",
+    "identified": "已定位",
+    "monitoring": "监控恢复中",
+    "resolved": "已解决",
+    "postmortem": "复盘中",
+    "scheduled": "计划维护",
+    "in_progress": "处理中",
+    "verifying": "验证中",
+    "completed": "已完成",
+}
+IMPACT_LABELS_ZH = {
+    "critical": "严重影响",
+    "major": "重大影响",
+    "minor": "较低影响",
+    "none": "无明显影响",
+    "unknown": "影响待确认",
+}
+
+
+def _translate_terms(value: str) -> str:
+    """翻译通用运维短语，产品名、模型名、区域代码保持不变。"""
+    replacements = (
+        ("Copilot AI Model Providers", "Copilot AI 模型服务提供商"),
+        ("AI Model Providers", "AI 模型服务提供商"),
+        ("Network Performance", "网络性能"),
+        ("HTTP 5XX Errors", "HTTP 5XX 错误"),
+        ("socket connection", "套接字连接"),
+        ("failed meeting joins", "会议加入失败"),
+        ("availability", "可用性"),
+        ("elevated errors", "错误率升高"),
+        ("Metrics Queries", "Metrics 查询"),
+        ("services", "服务"),
+        ("Istanbul", "伊斯坦布尔"),
+    )
+    result = value
+    for source, target in replacements:
+        result = re.sub(re.escape(source), target, result, flags=re.IGNORECASE)
+    return result.strip()
+
+
+def _localized_title(title: str, service: str, source_name: str) -> str:
+    """把常见 Statuspage 事故标题转换为中文优先标题。"""
+    patterns: tuple[tuple[str, Any], ...] = (
+        (r"^Incident with (.+)$", lambda match: f"{_translate_terms(match.group(1))}异常"),
+        (r"^Degraded availability(?: for)? (.+)$", lambda match: f"{_translate_terms(match.group(1))}可用性下降"),
+        (r"^Network Performance Issues in (.+)$", lambda match: f"{_translate_terms(match.group(1))}地区网络性能异常"),
+        (r"^Increased (.+) in (.+)$", lambda match: f"{_translate_terms(match.group(2))}地区{_translate_terms(match.group(1))}增加"),
+        (r"^(.+) experiencing elevated errors$", lambda match: f"{_translate_terms(match.group(1))}错误率升高"),
+        (r"^(.+) socket connection slowness and failed meeting joins$", lambda match: f"{_translate_terms(match.group(1))}套接字连接缓慢，会议加入失败"),
+        (r"^Delayed (.+)$", lambda match: f"{_translate_terms(match.group(1))}数据延迟"),
+    )
+    for pattern, formatter in patterns:
+        if match := re.match(pattern, title, flags=re.IGNORECASE):
+            return formatter(match)
+    translated = _translate_terms(title)
+    if re.search(r"[\u3400-\u9fff]", translated):
+        return translated
+    translated_service = _translate_terms(service)
+    if re.search(r"[\u3400-\u9fff]", translated_service):
+        return f"{translated_service}服务异常"
+    return f"{source_name}公开服务异常"
+
+
+def _localized_update(status: str, service: str) -> str:
+    status_key = status.lower()
+    service_name = _translate_terms(service)
+    prefix = STATUS_LABELS_ZH.get(status_key, "状态更新")
+    detail = {
+        "investigating": "官方正在调查异常原因。",
+        "identified": "官方已定位问题，正在实施修复。",
+        "monitoring": "修复措施已实施，正在观察服务恢复情况。",
+        "resolved": "事故已解决，服务状态已恢复。",
+        "postmortem": "事故已结束，官方正在整理复盘信息。",
+    }.get(status_key, "官方已发布新的事故进展。")
+    return f"{prefix}：{service_name}。{detail}"
+
+
 def _component_names(incident: dict[str, Any]) -> list[str]:
     names = {
         _plain_text(component.get("name"), 80)
@@ -134,6 +212,7 @@ def incident_to_scenario(
     impact = _plain_text(incident.get("impact"), 30).lower() or "unknown"
     source_url = f"{source.site_url}/incidents/{incident_id}"
     signal_source = f"{source.key}_status_api"
+    display_title = _localized_title(title, service, source.name)
 
     signals: list[Signal] = [
         Signal(
@@ -142,6 +221,8 @@ def incident_to_scenario(
             value=f"{_plain_text(update.get('status'), 40)}: {text}",
             timestamp=_parse_timestamp(update.get("display_at") or update.get("created_at")),
             source=signal_source,
+            display_name=f"第 {index} 次官方更新",
+            display_value=_localized_update(_plain_text(update.get("status"), 40), service),
         )
         for index, (update, text) in enumerate(update_pairs, start=1)
     ]
@@ -152,6 +233,8 @@ def incident_to_scenario(
             value=impact,
             timestamp=_parse_timestamp(incident.get("created_at")),
             source=signal_source,
+            display_name="公开影响等级",
+            display_value=IMPACT_LABELS_ZH.get(impact, "影响待确认"),
         )
     )
 
@@ -179,6 +262,13 @@ def incident_to_scenario(
         started_at=_parse_timestamp(incident.get("started_at") or incident.get("created_at")),
         update_count=len(raw_updates),
         components=components,
+        display_title=display_title,
+        display_summary=(
+            f"{_translate_terms(service)}发生公开服务异常。"
+            f"当前状态：{STATUS_LABELS_ZH.get(_plain_text(incident.get('status'), 40).lower(), '待确认')}；"
+            f"影响等级：{IMPACT_LABELS_ZH.get(impact, '影响待确认')}；"
+            f"官方已发布 {len(raw_updates)} 条更新。"
+        ),
     )
 
 

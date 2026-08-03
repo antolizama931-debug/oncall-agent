@@ -235,10 +235,15 @@ function renderLanding() {
 }
 
 function incidentChineseSummary(scenario) {
+  if (scenario.display_summary) return scenario.display_summary;
   const service = scenario.request.service || "相关服务";
   const updates = scenario.update_count || 0;
   const resolved = scenario.incident_status === "resolved";
   return `${service} ${resolved ? "曾发生公开服务异常，目前状态页显示已恢复" : "正在发生公开服务异常，仍需继续观察"}。状态页已发布 ${updates} 条更新，可进入调查页面核对完整时间线。`;
+}
+
+function incidentDisplayTitle(scenario) {
+  return scenario?.display_title || "官方状态页公开服务异常";
 }
 
 function renderIncidentCards(container, items, landing = false) {
@@ -255,18 +260,20 @@ function renderIncidentCards(container, items, landing = false) {
     const source = node("span", "source-chip", dataModeLabel(scenario.data_mode));
     meta.append(severity, source);
     const titleBlock = node("div", "incident-title-block");
-    const titleLabel = node("span", "incident-title-label", "原始事故标题");
-    const title = node("h3", "", scenario.title);
+    const titleLabel = node("span", "incident-title-label", "事故标题（中文）");
+    const title = node("h3", "", incidentDisplayTitle(scenario));
     const summary = node("p", "incident-summary-cn", incidentChineseSummary(scenario));
     titleBlock.append(titleLabel, title, summary);
-    if (landing) {
-      const original = document.createElement("details");
-      original.className = "original-incident";
-      const originalLabel = document.createElement("summary");
-      originalLabel.textContent = "查看原始信息";
-      original.append(originalLabel, node("p", "", scenario.request.description));
-      titleBlock.append(original);
-    }
+    const original = document.createElement("details");
+    original.className = "original-incident";
+    const originalLabel = document.createElement("summary");
+    originalLabel.textContent = "查看英文原文";
+    original.append(
+      originalLabel,
+      node("strong", "", scenario.title),
+      node("p", "", scenario.request.description),
+    );
+    titleBlock.append(original);
     const facts = node("div", "incident-facts");
     [scenario.request.service, `${scenario.update_count} 条公开更新`, formatDate(scenario.started_at)].forEach((text, factIndex) => {
       const span = node("span", "");
@@ -317,7 +324,7 @@ function renderDashboard() {
         <article><span>待审批</span><strong>${state.runs.filter((run) => run.status === "awaiting-approval").length}</strong><small>不会自动执行动作</small><i class="metric-icon green">${icon("shield", 20)}</i></article>
       </section>
       <section class="dashboard-grid">
-        <div class="panel incident-panel"><header><div><span>真实公开事故</span><h2>多源官方事故流</h2><small class="source-language-note">GitHub · Cloudflare · Datadog；原始标题保留来源语言</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></div>
+        <div class="panel incident-panel"><header><div><span>真实公开事故</span><h2>多源官方事故流</h2><small class="source-language-note">中文优先展示；英文原文可按需展开核对</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></div>
         <aside class="dashboard-side">
           <section class="panel runtime-card"><header><div><span>运行时状态</span><h2>Agent 状态</h2></div><span class="healthy-chip">在线</span></header>
             <div class="runtime-brand"><span>OC</span><div><strong>${state.health?.model || "模型信息未加载"}</strong><small>${state.health?.deepseek_configured ? "大语言模型已配置" : "使用确定性降级分析"}</small></div></div>
@@ -395,7 +402,7 @@ async function createRun(input) {
 
 function renderWorkbench(scenario, run = null) {
   document.body.className = "page-workbench";
-  const title = run?.title || scenario?.title || "事故调查";
+  const title = run?.display_title || scenario?.display_title || "事故调查";
   const service = run?.service || scenario?.request.service || "unknown-service";
   const severity = run?.severity || scenario?.request.severity || "UNKNOWN";
   const currentStatus = run?.status || scenario?.incident_status || "ready";
@@ -434,7 +441,17 @@ function renderScenarioDetails(scenario) {
     const row = node("div", "timeline-row");
     row.innerHTML = `<span>${String(index + 1).padStart(2, "0")}</span><i></i>`;
     const copy = node("div", "");
-    copy.append(node("strong", "", signal.name), node("p", "", signal.value), node("small", "", formatDate(signal.timestamp)));
+    copy.append(
+      node("strong", "", signal.display_name || "官方状态更新"),
+      node("p", "", signal.display_value || "官方已发布新的事故进展。"),
+      node("small", "", formatDate(signal.timestamp)),
+    );
+    const original = document.createElement("details");
+    original.className = "timeline-original";
+    const originalLabel = document.createElement("summary");
+    originalLabel.textContent = "查看英文原文";
+    original.append(originalLabel, node("p", "", `${signal.name}：${signal.value}`));
+    copy.append(original);
     row.append(copy);
     steps.append(row);
   });

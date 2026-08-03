@@ -52,6 +52,8 @@ class Signal(BaseModel):
     value: NonEmptyText
     timestamp: datetime | None = None
     source: str = "user"
+    display_name: str | None = Field(default=None, max_length=160)
+    display_value: str | None = Field(default=None, max_length=2000)
 
 
 class Artifact(BaseModel):
@@ -142,6 +144,8 @@ class Scenario(BaseModel):
     started_at: datetime | None = None
     update_count: int = Field(default=0, ge=0)
     components: list[str] = Field(default_factory=list)
+    display_title: str | None = Field(default=None, max_length=300)
+    display_summary: str | None = Field(default=None, max_length=1200)
 
 
 class TokenUsage(BaseModel):
@@ -193,6 +197,7 @@ class AgentRun(BaseModel):
     session_id: str
     scenario_key: str | None = None
     title: str
+    display_title: str | None = None
     service: str
     severity: Severity
     source_name: str | None = None
