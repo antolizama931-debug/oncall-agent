@@ -10,6 +10,7 @@ const state = {
   knowledgeDocuments: [],
   chatMessages: [],
   chatTrace: [],
+  incidentListExpanded: false,
   loading: true,
   error: null,
   sessionId: getSessionId(),
@@ -363,7 +364,7 @@ function renderDashboard() {
         <article><span>04 · 已完成事故</span><strong>${completedRuns.length}</strong><small>保存处置结果、恢复验证与复盘记录</small><i class="metric-icon green">${icon("check", 20)}</i></article>
       </section>
       <section class="dashboard-operations">
-        <section class="panel incident-panel operation-panel operation-pending"><header><div><span>01 · 待处理事故</span><h2>公开事故待调查池</h2><small class="source-language-note">数据来自 ${state.dashboard?.source_name || "Wikimedia Status"}，用于验证调查流程，不代表你的企业正在发生这些事故。</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></section>
+        <section class="panel incident-panel operation-panel operation-pending"><header><div><span>01 · 待处理事故</span><h2>公开事故待调查池</h2><small class="source-language-note">数据来自 ${state.dashboard?.source_name || "Wikimedia Status"}，用于验证调查流程，不代表你的企业正在发生这些事故。</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div>${state.scenarios.length > 5 ? `<footer class="incident-list-footer"><button id="toggle-incidents">${state.incidentListExpanded ? "收起事故列表" : `查看全部 ${state.scenarios.length} 条事故`}${icon("arrow", 15)}</button></footer>` : ""}</section>
         <section class="panel operation-panel" id="investigations"><header><div><span>02 · Agent 调查</span><h2>正在调查</h2><small>查看证据采集、知识检索和根因判断过程</small></div><span class="count-chip">${investigationRuns.length}</span></header><div id="investigation-list" class="operation-run-list"></div></section>
         <section class="panel operation-panel approval-panel" id="approvals"><header><div><span>03 · 操作审批</span><h2>等待人工决策</h2><small>批准前必须核对影响范围、风险、验证条件和回滚方案</small></div><span class="count-chip warning">${approvalRuns.length}</span></header><div id="approval-list" class="operation-run-list"></div></section>
         <section class="panel operation-panel" id="completed"><header><div><span>04 · 已完成事故</span><h2>验证与复盘记录</h2><small>包括无需处置、恢复成功、回滚、拒绝和升级人工处理的结果</small></div><span class="count-chip success">${completedRuns.length}</span></header><div id="completed-list" class="operation-run-list"></div></section>
@@ -371,7 +372,7 @@ function renderDashboard() {
       <section class="runtime-strip"><div><span class="live-orb"></span><strong>Agent 运行正常</strong></div><dl><div><dt>模型</dt><dd>${state.health?.model || "未加载"}</dd></div><div><dt>告警入口</dt><dd>${state.health?.webhook_configured ? "Webhook 已连接" : "演示数据"}</dd></div><div><dt>遥测工具</dt><dd>${state.health?.tool_gateway_configured ? "企业网关已连接" : "未连接生产环境"}</dd></div><div><dt>执行模式</dt><dd>安全演练</dd></div></dl></section>
     </main></div></div>
     <div class="modal" id="incident-modal" hidden><div class="modal-backdrop" data-close></div><form class="modal-card" id="incident-form"><header><div><span>自定义事故输入</span><h2>新建脱敏调查</h2></div><button type="button" data-close aria-label="关闭">${icon("x", 18)}</button></header><p>提交事故描述和必要上下文。请勿上传密码、令牌、个人信息或生产机密。</p><label>服务名称<input name="service" maxlength="120" value="unknown-service" required></label><label>严重级别<select name="severity"><option>SEV-1</option><option selected>SEV-2</option><option>SEV-3</option><option value="UNKNOWN">未知</option></select></label><label>事故描述<textarea name="description" minlength="10" maxlength="6000" rows="7" placeholder="描述症状、影响范围、时间窗口和已有遥测……" required></textarea></label><footer><button type="button" class="button secondary" data-close>取消</button><button type="submit" class="button primary">启动 Agent ${icon("arrow", 15)}</button></footer></form></div>`;
-  renderIncidentCards(document.querySelector("#dashboard-incidents"), state.scenarios);
+  renderIncidentCards(document.querySelector("#dashboard-incidents"), state.incidentListExpanded ? state.scenarios : state.scenarios.slice(0, 5));
   renderRuns(document.querySelector("#investigation-list"), investigationRuns, "暂无正在调查的事故", "从待处理事故中选择一条记录并启动 Agent。");
   renderRuns(document.querySelector("#approval-list"), approvalRuns, "暂无待审批操作", "只有匹配到标准 Runbook 且需要处置的调查才会进入这里。");
   renderRuns(document.querySelector("#completed-list"), completedRuns, "暂无已完成事故", "完成调查、验证或回滚后，记录会保存在这里。");
@@ -401,6 +402,10 @@ function renderRuns(container, runs, emptyTitle = "尚无 Agent 运行记录", e
 function bindDashboardEvents() {
   const modal = document.querySelector("#incident-modal");
   document.querySelector("#new-incident")?.addEventListener("click", () => { modal.hidden = false; });
+  document.querySelector("#toggle-incidents")?.addEventListener("click", () => {
+    state.incidentListExpanded = !state.incidentListExpanded;
+    renderDashboard();
+  });
   modal?.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => { modal.hidden = true; }));
   document.querySelector("#incident-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
