@@ -1,0 +1,19 @@
+[project]
+name = "oncall-agent"
+version = "0.1.0"
+description = "Evidence-grounded incident triage agent with auditable reasoning and safety gates"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi[standard]==0.139.2",
+    "httpx>=0.28,<1.0",
+    "pytest>=8.0,<10.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

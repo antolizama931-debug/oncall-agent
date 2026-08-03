@@ -1,0 +1,12 @@
+services:
+  oncall-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      ONCALL_ENV: production
+      ONCALL_RATE_LIMIT_PER_MINUTE: 5
+      ONCALL_DAILY_LIMIT: 30
+      DEEPSEEK_MODEL: deepseek-v4-flash
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+    restart: unless-stopped

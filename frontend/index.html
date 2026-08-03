@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="OnCall Agent — an evidence-grounded incident response agent with auditable diagnosis and risk-gated remediation."
+    />
+    <meta name="theme-color" content="#07110f" />
+    <meta property="og:title" content="OnCall Agent" />
+    <meta
+      property="og:description"
+      content="From alert noise to an auditable incident response plan."
+    />
+    <meta property="og:type" content="website" />
+    <title>OnCall Agent — Incident response, with evidence</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="config.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="OnCall Agent home">
+        <span class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </span>
+        <span>OnCall<span class="brand-muted">/agent</span></span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#demo">Live demo</a>
+        <a href="#system">System</a>
+        <a href="#decisions">Decisions</a>
+      </nav>
+      <a class="header-link" data-link="repository" href="#" aria-disabled="true">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 .7a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.17.08 1.78 1.2 1.78 1.2 1.04 1.77 2.72 1.26 3.38.96.1-.75.4-1.26.74-1.55-2.57-.3-5.27-1.29-5.27-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.16 1.18a10.99 10.99 0 0 1 5.75 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.71 5.39-5.29 5.68.42.36.79 1.06.79 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z"/></svg>
+        Source
+      </a>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="hero-copy reveal">
+          <div class="eyebrow"><span class="pulse-dot"></span> Evidence-grounded incident response</div>
+          <h1>Move from alert noise to an <em>auditable</em> response plan.</h1>
+          <p class="hero-lede">
+            OnCall Agent turns incident reports and telemetry into auditable evidence,
+            ranked hypotheses, and risk-gated recovery recommendations.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#demo">
+              Run the sandbox
+              <svg aria-hidden="true" viewBox="0 0 20 20"><path d="m7.5 4 6 6-6 6"/></svg>
+            </a>
+            <a class="button button-secondary" data-link="repository" href="#" aria-disabled="true">View repository</a>
+          </div>
+          <ul class="technology-list" aria-label="Project technologies">
+            <li>DeepSeek V4</li><li>Python</li><li>Evidence grounding</li><li>Safety gates</li>
+          </ul>
+        </div>
+
+        <div class="hero-visual reveal" aria-label="Example incident summary">
+          <div class="signal-card signal-main">
+            <div class="signal-head">
+              <span class="label"><span class="severity-dot"></span> ACTIVE INCIDENT</span>
+              <span class="mono">INC-2841</span>
+            </div>
+            <div class="service-row">
+              <div class="service-icon">P</div>
+              <div><strong>payment-api</strong><span>ap-southeast-1 · production</span></div>
+              <span class="severity">SEV-1</span>
+            </div>
+            <div class="chart" aria-hidden="true">
+              <div class="chart-grid"></div>
+              <svg viewBox="0 0 560 140" preserveAspectRatio="none">
+                <defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#79f2c0" stop-opacity=".32"/><stop offset="1" stop-color="#79f2c0" stop-opacity="0"/></linearGradient></defs>
+                <path class="area" d="M0 116 C45 112 60 110 95 114 S155 111 185 109 S230 112 255 104 S285 100 310 101 S342 96 365 79 S398 90 420 59 S447 72 470 43 S510 68 560 18 L560 140 L0 140Z"/>
+                <path class="line" d="M0 116 C45 112 60 110 95 114 S155 111 185 109 S230 112 255 104 S285 100 310 101 S342 96 365 79 S398 90 420 59 S447 72 470 43 S510 68 560 18"/>
+              </svg>
+              <div class="chart-value"><strong>2.81s</strong><span>p95 latency</span></div>
+            </div>
+            <div class="signal-footer">
+              <div><span>Error rate</span><strong>18.4%</strong></div>
+              <div><span>Started</span><strong>8m ago</strong></div>
+              <div><span>Confidence</span><strong class="green">High</strong></div>
+            </div>
+          </div>
+          <div class="float-card float-top"><span class="float-icon">↗</span><div><span>Change detected</span><strong>deploy #8f3c1a</strong></div></div>
+          <div class="float-card float-bottom"><span class="float-icon approved">✓</span><div><span>Safety gate</span><strong>Approval required</strong></div></div>
+        </div>
+      </section>
+
+      <section class="proof-strip" aria-label="Project principles">
+        <div><strong>01</strong><span>Evidence before action</span></div>
+        <div><strong>02</strong><span>Explicit confidence</span></div>
+        <div><strong>03</strong><span>Human approval gates</span></div>
+        <div><strong>04</strong><span>Replayable execution trace</span></div>
+      </section>
+
+      <section class="section demo-section" id="demo">
+        <div class="section-heading reveal">
+          <div><span class="kicker">Interactive sandbox</span><h2>See the reasoning trail,<br/>not just the answer.</h2></div>
+          <p>Use a synthetic scenario or edit the incident report. The FastAPI backend returns an auditable analysis without accessing production systems.</p>
+        </div>
+
+        <div class="sandbox reveal">
+          <aside class="scenario-panel">
+            <div class="panel-label">Choose an incident</div>
+            <div class="mode-switch" role="group" aria-label="Input mode">
+              <button type="button" id="mode-example" class="active">Examples</button>
+              <button type="button" id="mode-custom">Custom input</button>
+            </div>
+            <div class="scenario-list" id="scenario-list" role="listbox" aria-label="Incident scenario">
+              <p class="load-error">Loading scenarios…</p>
+            </div>
+            <div class="incident-form">
+              <label for="incident-description">Incident report</label>
+              <textarea id="incident-description" maxlength="6000" rows="7" placeholder="Describe symptoms, recent changes, and available telemetry."></textarea>
+              <div class="incident-form-row">
+                <label>Service<input id="incident-service" maxlength="120" value="unknown-service" /></label>
+                <label>Severity<select id="incident-severity"><option>SEV-1</option><option>SEV-2</option><option>SEV-3</option><option>UNKNOWN</option></select></label>
+              </div>
+              <label class="file-picker">Logs and telemetry
+                <input id="incident-files" type="file" accept=".txt,.log,.json,.md,text/plain,application/json" multiple />
+                <span>Select up to 5 text files; 40,000 characters total.</span>
+              </label>
+              <div id="artifact-list" class="artifact-list" aria-live="polite"></div>
+            </div>
+            <div class="sandbox-note"><span>i</span><p><strong>Do not upload secrets</strong>Files are sent to the configured DeepSeek API for analysis. Remove credentials, tokens, and personal data first.</p></div>
+          </aside>
+
+          <div class="console-panel">
+            <div class="console-topbar">
+              <div class="window-dots"><i></i><i></i><i></i></div>
+              <span>agent_trace.jsonl</span>
+              <div class="console-status"><span></span> <b id="api-status">Connecting…</b></div>
+            </div>
+            <div class="incident-titlebar">
+              <div><span id="incident-id">INC-2841</span><h3 id="incident-title">Checkout latency exceeds SLO</h3></div>
+              <button class="run-button" id="run-analysis"><span>▶</span> Run analysis</button>
+            </div>
+            <div class="trace" id="trace" aria-live="polite">
+              <div class="trace-empty" id="trace-empty">
+                <div class="empty-radar"><span></span><span></span><i></i></div>
+                <strong>Ready to investigate</strong>
+                <p>Select a scenario and run the analysis to inspect the agent's evidence trail.</p>
+              </div>
+            </div>
+            <div class="result-card" id="result-card" hidden>
+              <div class="analysis-provider" id="analysis-provider">Analysis provider</div>
+              <div class="result-header"><span class="result-check">✓</span><div><span>PRIMARY HYPOTHESIS</span><h4 id="result-hypothesis"></h4></div><strong id="result-confidence"></strong></div>
+              <p id="result-evidence"></p>
+              <div class="recommendation"><span>RECOMMENDED ACTION</span><p id="result-action"></p><button type="button" id="result-risk" disabled>approval-required</button></div>
+              <details class="result-limitations"><summary>Limitations and safety boundary</summary><ul id="result-limitations"></ul></details>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section system-section" id="system">
+        <div class="section-heading reveal">
+          <div><span class="kicker">System design</span><h2>A constrained pipeline,<br/>not an open-ended chatbot.</h2></div>
+          <p>Each stage produces a typed artifact that can be inspected, evaluated, and replayed independently.</p>
+        </div>
+        <div class="pipeline reveal">
+          <article><span class="step-number">01</span><div class="step-icon">⌁</div><h3>Observe</h3><p>Normalize alerts, metrics, logs, traces, and deployment events.</p><small>Structured signals</small></article>
+          <span class="pipeline-arrow">→</span>
+          <article><span class="step-number">02</span><div class="step-icon">◇</div><h3>Correlate</h3><p>Build an incident timeline and rank causally relevant evidence.</p><small>Evidence graph</small></article>
+          <span class="pipeline-arrow">→</span>
+          <article><span class="step-number">03</span><div class="step-icon">⌘</div><h3>Diagnose</h3><p>Generate testable hypotheses with calibrated confidence.</p><small>Ranked hypotheses</small></article>
+          <span class="pipeline-arrow">→</span>
+          <article><span class="step-number">04</span><div class="step-icon">✓</div><h3>Gate</h3><p>Map risk to read-only, approval-required, or blocked actions.</p><small>Policy decision</small></article>
+        </div>
+      </section>
+
+      <section class="section decisions-section" id="decisions">
+        <div class="section-heading reveal">
+          <div><span class="kicker">Engineering judgment</span><h2>The decisions behind<br/>the demo.</h2></div>
+          <p>The portfolio explains trade-offs, not only features—so reviewers can assess the engineering process.</p>
+        </div>
+        <div class="decision-grid reveal">
+          <article><div class="decision-index">A</div><div><h3>Why structured evidence?</h3><p>Free-form context is difficult to test. Typed evidence records make source, timestamp, relevance, and uncertainty explicit.</p></div></article>
+          <article><div class="decision-index">B</div><div><h3>Why approval gates?</h3><p>Confidence is not authorization. Operational risk determines whether an action is automatic, reviewed, or blocked.</p></div></article>
+          <article><div class="decision-index">C</div><div><h3>Why deterministic replay?</h3><p>Frozen inputs and execution traces make regressions reproducible across prompts, models, and policy versions.</p></div></article>
+          <article><div class="decision-index">D</div><div><h3>What is intentionally omitted?</h3><p>The public sandbox has no production credentials, shell access, or destructive tools. Those boundaries are part of the design.</p></div></article>
+        </div>
+      </section>
+
+      <section class="cta-section reveal">
+        <span class="kicker">Explore the implementation</span>
+        <h2>Inspect the code.<br/>Challenge the decisions.</h2>
+        <p>The repository contains the architecture, incident fixtures, safety policies, and reproducible setup.</p>
+        <div class="hero-actions">
+          <a class="button button-light" data-link="repository" href="#" aria-disabled="true">Open GitHub repository <span>↗</span></a>
+          <a class="button button-ghost" data-link="resume" href="#" aria-disabled="true">View résumé</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand footer-brand" href="#top"><span class="brand-mark"><span></span><span></span><span></span></span>OnCall<span class="brand-muted">/agent</span></a>
+      <p><span id="owner-line">Built as an AI systems engineering portfolio.</span> <span>© <span id="year"></span></span></p>
+      <a href="#top">Back to top ↑</a>
+    </footer>
+  </body>
+</html>
