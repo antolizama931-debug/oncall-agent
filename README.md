@@ -7,7 +7,7 @@
 ## 产品界面
 
 - `#landing`：产品落地页，展示运行边界、真实数据和五阶段执行模型。
-- `#home`：事故控制台，浏览 GitHub Status 事故、会话内运行记录和审批数量。
+- `#home`：事故控制台，浏览 GitHub、Cloudflare、Datadog 官方状态页事故、会话内运行记录和审批数量。
 - `#/customer-service`：知识库 Agent 工作台，支持提问、文档上传、检索引用和会话记忆。
 - `#/incidents/{scenario_key}`：深色调查工作台，可启动真实 Agent Run。
 - `#/runs/{run_id}`：回放工具调用、证据、假设、建议和人工决策。
@@ -18,7 +18,7 @@
 
 每次 `Agent Run` 会真实经过五个可审计阶段：
 
-1. `github_status.read` / `incident.input`：读取固定数据源或接收脱敏输入；
+1. `statuspage.read` / `incident.input`：读取固定官方状态页或接收脱敏输入；
 2. `evidence.normalize`：把观察事实与推测分开；
 3. `diagnosis.rank`：生成并排序可验证假设；
 4. `citations.validate`：校验证据引用；
@@ -43,26 +43,28 @@
 ## RAG 检索架构
 
 - PDF 通过 `pypdf` 提取文本，Markdown/TXT 只按文本解析，不执行文档内指令。
-- 多数据源：自动同步 GitHub Status 真实事故，同时接收用户上传的 PDF、Markdown 和 TXT。
+- 多数据源：并行同步 GitHub、Cloudflare、Datadog 官方状态页真实事故，同时接收用户上传的 PDF、Markdown 和 TXT。
 - 词法通道：BM25 召回故障码、服务名、命令和精确术语。
 - 语义通道：FastEmbed 运行 `BAAI/bge-small-zh-v1.5` 中文稠密向量模型，召回措辞不同但语义相近的内容。
 - 融合阶段：倒数排名融合（Reciprocal Rank Fusion, RRF）合并两路排名，避免直接相加量纲不同的 BM25 与余弦分数。
-- 可审计流程：问题识别 → 数据源路由 → 混合检索 → RRF 融合 → DeepSeek 生成 → 安全校验 → 有上限会话记忆。
+- 可审计流程：问题识别 → 数据源路由 → 混合检索 → RRF 融合 → DeepSeek 生成 → 安全校验 → 分层会话记忆。
 - 单文件最大 5 MB，提取文本最多 250,000 字符。
-- 文档、分块和会话均为进程内存储；Railway 重启后清空。
+- 用户上传文档的提取文本写入 `data/knowledge.db`（SQLite），原始 PDF 二进制不保存；分块和向量索引在启动时重建。
+- Railway 默认文件系统在重部署时可能清空。只有将 `ONCALL_DATA_DIR` 指向 Railway Volume 挂载目录后，上传知识才能跨部署保留。
+- 会话采用“滚动摘要 + 最近 8 条原文 + 12,000 字符硬预算”。会话仍保存在进程内存，服务重启后清空；摘要只维持上下文，不作为事实证据。
 - DeepSeek 只能依据返回的知识片段生成回答；API 密钥仅存在服务端。
 
-当前没有把系统标记为 Agentic RAG。项目只有两个只读数据源，固定、可审计的检索工作流已经覆盖当前需求；加入自主工具规划和反复检索循环会增加时延、成本与失控面。只有在增加日志、指标、Trace、CMDB 等多种异构连接器，并建立可衡量的检索评测集后，才适合验证 Agentic RAG 是否带来收益。
+当前没有把系统标记为智能体式检索增强生成（Agentic RAG）。三个状态页与用户文档仍适合固定、可审计的检索工作流；加入自主工具规划和反复检索循环会增加时延、成本与失控面。只有在增加日志、指标、Trace、CMDB 等异构连接器，并建立可量化检索评测集后，才适合验证 Agentic RAG 是否带来收益。
 
 ## 数据来源
 
-- 主数据源：GitHub 官方状态页公共接口 `https://www.githubstatus.com/api/v2/incidents.json`。
-- 在线模式：服务端获取最近公开事故，并缓存 5 分钟。
-- 回退模式：使用仓库内保存的、带原始事故 ID 和链接的 2026-08-03 验证快照。
+- 在线数据源：GitHub、Cloudflare、Datadog 的官方 Statuspage 公共接口。
+- 在线模式：每个来源最多读取 12 条，共最多 36 条最近公开事故，并缓存 5 分钟。
+- 部分降级：某一来源失败时保留其他在线来源；GitHub 失败时使用仓库内带事故 ID 和原始链接的验证快照。
 - 回放边界：只向智能体提供事故时间线最早的 3 条公开更新，不把后续根因分析提前泄漏给模型。
 - 来源展示：每个场景均返回 `source_name`、`source_url`、`source_incident_id`、`data_mode` 和 `fetched_at`。
 
-该数据只能证明 GitHub 对外发布了相应事故信息，不能替代 GitHub 内部日志、指标和链路追踪。模型输出是待验证假设，不是已证实根因。
+这些数据只能证明相应厂商对外发布了事故信息，不能替代厂商内部日志、指标和链路追踪。模型输出是待验证假设，不是已证实根因。
 
 ## 本地运行
 
@@ -121,13 +123,15 @@ DEEPSEEK_MAX_TOKENS=2200
 ```powershell
 railway login
 railway init
-railway variables set ONCALL_ENV=production ONCALL_ALLOW_RULE_FALLBACK=true ONCALL_STATUS_CACHE_SECONDS=300 ONCALL_STATUS_SCENARIO_LIMIT=6 ONCALL_MAX_RUNS=100
+railway variables set ONCALL_ENV=production ONCALL_ALLOW_RULE_FALLBACK=true ONCALL_STATUS_CACHE_SECONDS=300 ONCALL_STATUS_SCENARIO_LIMIT=36 ONCALL_STATUS_PER_SOURCE_LIMIT=12 ONCALL_MAX_RUNS=100 ONCALL_MEMORY_RECENT_MESSAGES=8 ONCALL_MEMORY_SUMMARY_CHARS=2400 ONCALL_CONTEXT_MAX_CHARS=12000
 railway variables set DEEPSEEK_API_KEY=你的密钥 DEEPSEEK_BASE_URL=https://api.deepseek.com DEEPSEEK_MODEL=deepseek-v4-flash DEEPSEEK_MAX_TOKENS=2200
 railway up
 railway domain
 ```
 
 若通过本仓库连接 GitHub 部署，Railway 服务的 Root Directory 保持为空（仓库根目录）；平台会直接读取根目录下的 `Dockerfile` 与 `railway.json`。
+
+如需让上传知识跨重部署保存，请先在 Railway 服务中创建并挂载 Volume（例如 `/data`），再设置 `ONCALL_DATA_DIR=/data`。Volume 是外部持久化资源，可能产生费用，因此仓库不会自动创建。
 
 ## GitHub Pages
 
@@ -143,7 +147,7 @@ railway domain
 
 ## 安全边界
 
-- GitHub Status URL 在后端固定，不接受用户提供的主机，避免服务端请求伪造（Server-Side Request Forgery, SSRF）。
+- 三个官方状态页 URL 均在后端固定，不接受用户提供的主机，避免服务端请求伪造（Server-Side Request Forgery, SSRF）。
 - 外部状态文本在后端去除 HTML，前端使用 `textContent` 构建节点，避免跨站脚本（Cross-Site Scripting, XSS）。
 - 上传内容会发送给已配置的 DeepSeek API；上传前必须删除密钥、令牌、个人信息和其他敏感数据。
 - 公共应用不执行 Shell、数据库写入、流量切换或自动回滚。

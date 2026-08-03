@@ -272,3 +272,6 @@ class KnowledgeChatResponse(BaseModel):
     model: str | None = None
     usage: TokenUsage | None = None
     memory_turns: int = Field(ge=0)
+    memory_summary_active: bool = False
+    memory_recent_messages: int = Field(default=0, ge=0)
+    memory_clipped: bool = False
