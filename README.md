@@ -1,5 +1,10 @@
 # OnCall Agent
 
+**Public demo:** https://oncall-agent-e8fc.onrender.com
+
+> The free Render instance can sleep after 15 minutes of inactivity. The first
+> request after a cold start may take about one minute.
+
 ## DeepSeek 配置（必需）
 
 项目默认使用当前 DeepSeek V4 Flash 模型。旧模型名 `deepseek-chat` 和
@@ -132,3 +137,4 @@ window.ONCALL_CONFIG = {
 3. 使用历史事故建立检索增强生成（Retrieval-Augmented Generation, RAG）；
 4. 对根因排序、证据引用率和修复建议安全性建立离线评测集；
 5. 部署到支持 Python 后端的云平台并绑定独立域名。
+
