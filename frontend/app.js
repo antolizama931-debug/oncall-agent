@@ -174,7 +174,7 @@ function renderLanding() {
       <section class="landing-hero shell">
         <div class="hero-copy">
           <span class="eyebrow"><i></i> 真实事故响应运行时</span>
-          <h1>让每一次故障，<em>都留下可验证的答案。</em></h1>
+          <h1>让每一次故障，<span>都留下可验证的<br class="mobile-only-break"/>答案。</span></h1>
           <p>OnCall Agent 从真实公开事故中提取证据，生成可证伪的根因假设，并在任何生产动作之前执行人工审批门控。</p>
           <div class="hero-buttons"><a class="button primary" href="#home">进入事故控制台 ${icon("arrow", 16)}</a><a class="button secondary" href="#incidents">查看真实事故</a></div>
           <div class="hero-footnote"><span>${icon("shield", 15)} 不执行生产写操作</span><span>${icon("link", 15)} 每条证据可追溯</span></div>
@@ -205,7 +205,7 @@ function renderLanding() {
       </section>
 
       <section class="capability-section shell" id="capabilities">
-        <div class="section-heading"><div><span>OnCall 控制平面</span><h2>不是普通聊天框，<br/>而是受约束的 Agent 运行时。</h2></div><p>观察、证据、假设、动作和授权严格分层。每个阶段都能被测试、回放和审计。</p></div>
+        <div class="section-heading"><div><span>OnCall 控制平面</span><h2>不是聊天框，<br/>而是受约束的 Agent Runtime。</h2></div><p>观察、证据、假设、动作和授权严格分层。每个阶段都能被测试、回放和审计。</p></div>
         <div class="capability-grid">
           <article class="cap-card violet"><div class="cap-icon">${icon("database", 25)}</div><span>01 / 数据连接</span><h3>真实事故连接器</h3><p>服务端读取固定白名单 GitHub Status API，失败时回退到带来源链接的验证快照。</p><footer>实时读取与事故回放 ${icon("arrow", 15)}</footer></article>
           <article class="cap-card orange"><div class="cap-icon">${icon("layers", 25)}</div><span>02 / 诊断推理</span><h3>证据约束诊断</h3><p>模型只能引用已编号证据；缺少区分性遥测时，系统明确降低置信度并请求补充数据。</p><footer>证据优先 ${icon("arrow", 15)}</footer></article>
@@ -221,16 +221,23 @@ function renderLanding() {
       </div></section>
 
       <section class="architecture-section shell" id="architecture">
-        <div class="section-heading"><div><span>执行模型</span><h2>五个工具阶段，<br/>一条可验证路径。</h2></div><p>Agent 运行不是隐藏的黑箱。每个工具只承担一个明确职责，并在最终建议前通过策略门控。</p></div>
+        <div class="section-heading"><div><span>执行模型</span><h2>五个工具阶段，<br/>形成可验证路径。</h2></div><p>Agent 运行不是隐藏的黑箱。每个工具只承担一个明确职责，并在最终建议前通过策略门控。</p></div>
         <div class="architecture-flow">
           ${["github_status.read","evidence.normalize","diagnosis.rank","citations.validate","policy.gate"].map((item, index) => `<div class="arch-node"><span>0${index + 1}</span><b>${item}</b><small>${["读取事故","规范证据","排序假设","验证引用","风险决策"][index]}</small></div>${index < 4 ? '<i>→</i>' : ''}`).join("")}
         </div>
       </section>
 
-      <section class="landing-cta"><div><span>开始一次可审计调查</span><h2>把真实事故放进<br/>可审计的 Agent 循环。</h2><a class="button dark" href="#/customer-service">进入知识库 Agent ${icon("arrow", 17)}</a></div></section>
+      <section class="landing-cta"><div><span>开始一次可审计调查</span><h2>把真实事故放进<br/>可审计的 Agent 循环。</h2><p>选择真实事故进入控制台，或使用混合检索 RAG 查询事故知识。</p><div class="cta-actions"><a class="button dark" href="#home">进入事故控制台 ${icon("arrow", 17)}</a><a class="button cta-secondary" href="#/customer-service">打开知识库 Agent</a></div></div></section>
     </main>
     <footer class="landing-footer shell"><div class="brand"><span class="brand-glyph">OC</span><span>OnCall Agent</span></div><p>证据约束型事故响应 · Railway 部署</p><a href="${config.repositoryUrl || "#"}" target="_blank" rel="noopener noreferrer">查看源代码 ${icon("external", 13)}</a></footer>`;
   renderIncidentCards(document.querySelector("#landing-incidents"), state.scenarios.slice(0, 3), true);
+}
+
+function incidentChineseSummary(scenario) {
+  const service = scenario.request.service || "相关服务";
+  const updates = scenario.update_count || 0;
+  const resolved = scenario.incident_status === "resolved";
+  return `${service} ${resolved ? "曾发生公开服务异常，目前状态页显示已恢复" : "正在发生公开服务异常，仍需继续观察"}。状态页已发布 ${updates} 条更新，可进入调查页面核对完整时间线。`;
 }
 
 function renderIncidentCards(container, items, landing = false) {
@@ -246,8 +253,19 @@ function renderIncidentCards(container, items, landing = false) {
     const severity = node("span", `severity-badge ${severityClass(scenario.request.severity)}`, scenario.request.severity);
     const source = node("span", "source-chip", dataModeLabel(scenario.data_mode));
     meta.append(severity, source);
+    const titleBlock = node("div", "incident-title-block");
+    const titleLabel = node("span", "incident-title-label", "原始事故标题");
     const title = node("h3", "", scenario.title);
-    const description = node("p", "", scenario.request.description);
+    const summary = node("p", "incident-summary-cn", incidentChineseSummary(scenario));
+    titleBlock.append(titleLabel, title, summary);
+    if (landing) {
+      const original = document.createElement("details");
+      original.className = "original-incident";
+      const originalLabel = document.createElement("summary");
+      originalLabel.textContent = "查看原始信息";
+      original.append(originalLabel, node("p", "", scenario.request.description));
+      titleBlock.append(original);
+    }
     const facts = node("div", "incident-facts");
     [scenario.request.service, `${scenario.update_count} 条公开更新`, formatDate(scenario.started_at)].forEach((text, factIndex) => {
       const span = node("span", "");
@@ -261,7 +279,7 @@ function renderIncidentCards(container, items, landing = false) {
     link.href = `#/incidents/${encodeURIComponent(scenario.key)}`;
     link.insertAdjacentHTML("beforeend", icon("arrow", 14));
     footer.append(status, link);
-    article.append(meta, title, description, facts, footer);
+    article.append(meta, titleBlock, facts, footer);
     article.style.setProperty("--delay", `${index * 70}ms`);
     container.append(article);
   });
@@ -271,18 +289,18 @@ function appSidebar(active = "home") {
   return `<aside class="app-sidebar">
     <a class="sidebar-brand" href="#landing"><span>OC</span></a>
     <nav>
-      <a class="${active === "home" ? "active" : ""}" href="#home" title="事故控制台">${icon("grid", 20)}</a>
-      <a class="${active === "runs" ? "active" : ""}" href="#home#runs" title="Agent 运行记录">${icon("pulse", 20)}</a>
-      <a href="#landing#architecture" title="系统架构">${icon("layers", 20)}</a>
+      <a class="${active === "home" ? "active" : ""}" href="#home" title="事故控制台">${icon("grid", 20)}<span>控制台</span></a>
+      <a class="${active === "runs" ? "active" : ""}" href="#home#runs" title="Agent 运行记录">${icon("pulse", 20)}<span>运行记录</span></a>
+      <a href="#landing#architecture" title="系统架构">${icon("layers", 20)}<span>执行架构</span></a>
     </nav>
-    <div class="sidebar-bottom"><span class="live-orb" title="运行时在线"></span><button title="当前会话">${icon("user", 18)}</button></div>
+    <div class="sidebar-bottom"><span class="sidebar-online"><i class="live-orb"></i>运行时在线</span><button title="当前会话">${icon("user", 18)}<span>当前会话</span></button></div>
   </aside>`;
 }
 
 function appTopbar(title = "事故控制台") {
   return `<header class="app-topbar">
     <div><button class="mobile-menu">${icon("menu", 18)}</button><a href="#landing">OnCall Agent</a><i>/</i><strong>${title}</strong></div>
-    <div class="topbar-right"><span class="runtime-pill"><i></i>${dataModeLabel(state.dashboard?.data_mode || state.health?.incident_data_mode || "online")}</span><button title="搜索">${icon("search", 17)}</button><button title="通知">${icon("bell", 17)}</button><span class="avatar" title="演示操作员">操作</span></div>
+    <div class="topbar-right"><span class="runtime-pill"><i></i>${dataModeLabel(state.dashboard?.data_mode || state.health?.incident_data_mode || "online")}</span><span class="avatar" title="演示操作员">操作</span></div>
   </header>`;
 }
 
