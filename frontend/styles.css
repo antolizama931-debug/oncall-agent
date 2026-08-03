@@ -585,4 +585,91 @@ body { font-size: 17px; line-height: 1.65; }
   .incident-row .incident-summary-cn { display: none; }
 }
 
+/* 全站布局统一：一致的内容宽度、节奏和信息密度。 */
+.shell,
+.shell-wide,
+.knowledge-topbar-inner { width: min(1320px, calc(100% - 48px)); }
+.shell-app { width: min(1320px, calc(100% - 48px)); }
+
+.landing-hero { min-height: 620px; gap: 56px; padding-block: 58px 68px; }
+.capability-section,
+.architecture-section { padding-block: 88px; }
+.incident-section { padding-block: 84px; }
+
+.dashboard { padding-block: 32px 56px; }
+.dashboard-heading h1 { font-size: 43px; }
+.dashboard-heading p { max-width: 780px; }
+.console-notice { margin-top: 20px; }
+.metric-grid { margin-top: 20px; }
+.metric-grid article { min-height: 122px; }
+.dashboard-operations { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.operation-pending { grid-column: 1 / -1; }
+.operation-panel:not(.operation-pending) { min-height: 280px; }
+.operation-panel > header { align-items: flex-start; }
+.operation-panel > header > div { min-width: 0; }
+.operation-run-list .run-empty { min-height: 176px; }
+.incident-list-footer { display: flex; justify-content: center; padding: 12px 18px 16px; border-top: 1px solid var(--line); }
+.incident-list-footer button { display: inline-flex; align-items: center; gap: 9px; min-height: 40px; padding: 0 16px; color: var(--purple); border: 1px solid #d8cff5; border-radius: 10px; background: #f7f4ff; cursor: pointer; font-size: 13px; font-weight: 700; }
+.incident-list-footer button:hover { border-color: #b8a8ef; background: #f0ebff; }
+
+.knowledge-page { padding: 34px 0 80px; }
+.knowledge-hero { min-height: 205px; grid-template-columns: 1.12fr .88fr; gap: 64px; }
+.knowledge-hero h1 { font-size: clamp(44px, 4vw, 58px); }
+.knowledge-hero > div:last-child { font-size: 16px; line-height: 1.8; }
+.knowledge-layout { grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; }
+.knowledge-messages { height: 440px; }
+.knowledge-sidebar { gap: 20px; }
+.knowledge-status-card,
+.knowledge-memory-card { padding: 20px; }
+.knowledge-banner { height: 116px; }
+.knowledge-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.knowledge-stat-grid > div { min-height: 88px; }
+.knowledge-stat-grid > div:nth-child(1) { grid-column: 1; grid-row: 1; }
+.knowledge-stat-grid > div:nth-child(2) { grid-column: 1 / -1; grid-row: 2; min-height: 76px; }
+.knowledge-stat-grid > div:nth-child(3) { grid-column: 2; grid-row: 1; }
+.knowledge-stat-grid > div:nth-child(4) { grid-column: 1 / -1; grid-row: 3; min-height: 76px; }
+.knowledge-stat-grid strong { overflow-wrap: anywhere; }
+.knowledge-document-list { max-height: 220px; }
+
+@media (max-width: 1120px) {
+  .dashboard-operations { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .operation-pending,
+  #completed { grid-column: 1 / -1; }
+  .knowledge-hero { gap: 38px; }
+}
+
+@media (max-width: 820px) {
+  .shell,
+  .shell-wide,
+  .knowledge-topbar-inner,
+  .shell-app { width: min(100% - 28px, 1320px); }
+  .landing-hero { padding-block: 48px 58px; }
+  .dashboard-operations { grid-template-columns: 1fr; }
+  .operation-pending,
+  #completed { grid-column: auto; }
+  .knowledge-hero { min-height: 0; grid-template-columns: 1fr; gap: 24px; }
+  .knowledge-layout,
+  .knowledge-sidebar { grid-template-columns: minmax(0, 1fr); }
+  .knowledge-chat-card,
+  .knowledge-sidebar,
+  .knowledge-status-card,
+  .knowledge-memory-card { min-width: 0; }
+}
+
+@media (max-width: 560px) {
+  body { overflow-x: hidden; }
+  .dashboard-heading h1 { font-size: 36px; }
+  .dashboard-actions { align-items: stretch; flex-direction: column; }
+  .console-notice { padding: 14px; }
+  .metric-grid { grid-template-columns: 1fr; }
+  .metric-grid article { min-width: 0; min-height: 112px; }
+  .knowledge-page { padding-top: 18px; }
+  .knowledge-topbar-inner { grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
+  .knowledge-brand { min-width: 0; justify-self: end; }
+  .knowledge-brand strong { overflow: hidden; display: block; max-width: 190px; text-overflow: ellipsis; white-space: nowrap; }
+  .knowledge-hero h1 { font-size: 39px; overflow-wrap: anywhere; }
+  .knowledge-hero > div:last-child { font-size: 15px; }
+  .knowledge-messages { height: 380px; }
+}
+
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
