@@ -5,7 +5,7 @@ import httpx
 
 from app.deepseek import DeepSeekClient
 from app.fixtures import SCENARIOS
-from app.models import RiskLevel
+from app.models import ChatMessage, KnowledgeCitation, RiskLevel
 
 
 def test_deepseek_response_is_validated_and_grounded():
@@ -52,7 +52,7 @@ def test_deepseek_response_is_validated_and_grounded():
         api_key="test-key",
         transport=httpx.MockTransport(handler),
     )
-    result = asyncio.run(client.analyze(SCENARIOS["latency"].request))
+    result = asyncio.run(client.analyze(SCENARIOS["github-sj1tzyrx599x"].request))
 
     assert result.analysis_mode == "deepseek"
     assert result.model == "deepseek-v4-flash"
@@ -89,8 +89,42 @@ def test_dangerous_model_action_is_blocked():
         )
 
     client = DeepSeekClient(api_key="test-key", transport=httpx.MockTransport(handler))
-    result = asyncio.run(client.analyze(SCENARIOS["database"].request))
+    result = asyncio.run(client.analyze(SCENARIOS["github-q27ttsnp0x4g"].request))
 
     assert result.recommendation.risk_level == RiskLevel.BLOCKED
     assert "blocked" in result.recommendation.action.lower()
 
+
+def test_knowledge_answer_receives_bounded_memory_and_citation_context():
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert "response_format" not in payload
+        assert payload["messages"][1]["role"] == "user"
+        user_payload = json.loads(payload["messages"][-1]["content"])
+        assert user_payload["KNOWLEDGE_CONTEXT"][0]["citation_id"] == "K-TEST-001"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"finish_reason": "stop", "message": {"content": "先检查连接池。[K-TEST-001]"}}],
+                "usage": {"prompt_tokens": 30, "completion_tokens": 8, "total_tokens": 38},
+            },
+        )
+
+    client = DeepSeekClient(api_key="test-key", transport=httpx.MockTransport(handler))
+    answer, usage = asyncio.run(
+        client.answer_question(
+            question="应该先检查什么？",
+            citations=[
+                KnowledgeCitation(
+                    citation_id="K-TEST-001",
+                    document_id="DOC-TEST",
+                    document_name="runbook.md",
+                    excerpt="故障时先检查数据库连接池。",
+                    relevance=1.0,
+                )
+            ],
+            history=[ChatMessage(role="user", content="这是支付服务。")],
+        )
+    )
+    assert "K-TEST-001" in answer
+    assert usage.total_tokens == 38

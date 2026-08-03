@@ -1,97 +1,97 @@
 # OnCall Agent
 
-**Public demo:** https://oncall-agent-e8fc.onrender.com
+基于真实公开事故数据的证据约束型事故响应智能体（Incident Response Agent）。后端使用 FastAPI，将观察事实、根因假设和处置建议分层；所有生产写操作均被限制为人工审批或禁止。
 
-> The free Render instance can sleep after 15 minutes of inactivity. The first
-> request after a cold start may take about one minute.
+**Railway 公网地址：** https://oncall-agent-production-4c9c.up.railway.app
 
-## DeepSeek 配置（必需）
+## 产品界面
 
-项目默认使用当前 DeepSeek V4 Flash 模型。旧模型名 `deepseek-chat` 和
-`deepseek-reasoner` 已停用，不应继续配置。
+- `#landing`：产品落地页，展示运行边界、真实数据和五阶段执行模型。
+- `#home`：事故控制台，浏览 GitHub Status 事故、会话内运行记录和审批数量。
+- `#/customer-service`：知识库 Agent 工作台，支持提问、文档上传、检索引用和会话记忆。
+- `#/incidents/{scenario_key}`：深色调查工作台，可启动真实 Agent Run。
+- `#/runs/{run_id}`：回放工具调用、证据、假设、建议和人工决策。
 
-首次运行前，在项目根目录执行：
+前端为无构建依赖的单页应用（Single-Page Application, SPA），与 FastAPI 同源部署。
+
+## Agent 运行时
+
+每次 `Agent Run` 会真实经过五个可审计阶段：
+
+1. `github_status.read` / `incident.input`：读取固定数据源或接收脱敏输入；
+2. `evidence.normalize`：把观察事实与推测分开；
+3. `diagnosis.rank`：生成并排序可验证假设；
+4. `citations.validate`：校验证据引用；
+5. `policy.gate`：根据风险决定完成、审批或阻断。
+
+运行记录采用有上限的进程内存储（Process-local Store），服务重启后会清空。审批端点只记录操作员决定，`action_executed` 固定为 `false`，不会伪装成已连接生产系统。
+
+主要 API：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| `GET` | `/api/scenarios` | 获取真实事故回放 |
+| `GET` | `/api/dashboard` | 获取控制台汇总 |
+| `POST` | `/api/runs` | 从场景或自定义事件启动 Agent Run |
+| `GET` | `/api/runs/{run_id}` | 获取完整审计轨迹 |
+| `POST` | `/api/runs/{run_id}/decision` | 记录批准或拒绝，不执行生产动作 |
+| `POST` | `/api/knowledge/documents` | 上传并解析 PDF、Markdown 或 TXT |
+| `GET` | `/api/knowledge/status` | 获取文档、分块和检索器状态 |
+| `POST` | `/api/chat` | 执行检索增强问答并写入会话记忆 |
+| `GET/DELETE` | `/api/sessions/{session_id}` | 读取或清空本次会话 |
+
+## 知识库边界
+
+- PDF 通过 `pypdf` 提取文本，Markdown/TXT 只按文本解析，不执行文档内指令。
+- 检索器是明确标注的 BM25 风格词法检索，不冒充向量 Embedding。
+- 单文件最大 5 MB，提取文本最多 250,000 字符。
+- 文档、分块和会话均为进程内存储；Railway 重启后清空。
+- DeepSeek 只能依据返回的知识片段生成回答；API 密钥仅存在服务端。
+
+## 数据来源
+
+- 主数据源：GitHub 官方状态页公共接口 `https://www.githubstatus.com/api/v2/incidents.json`。
+- 在线模式：服务端获取最近公开事故，并缓存 5 分钟。
+- 回退模式：使用仓库内保存的、带原始事故 ID 和链接的 2026-08-03 验证快照。
+- 回放边界：只向智能体提供事故时间线最早的 3 条公开更新，不把后续根因分析提前泄漏给模型。
+- 来源展示：每个场景均返回 `source_name`、`source_url`、`source_incident_id`、`data_mode` 和 `fetched_at`。
+
+该数据只能证明 GitHub 对外发布了相应事故信息，不能替代 GitHub 内部日志、指标和链路追踪。模型输出是待验证假设，不是已证实根因。
+
+## 本地运行
 
 ```powershell
 Copy-Item .env.example .env
-notepad .env
-```
-
-将 `.env` 中的占位值替换为真实密钥：
-
-```dotenv
-DEEPSEEK_API_KEY=你的DeepSeek密钥
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-v4-flash
-```
-
-`.env` 已被 `.gitignore` 排除，禁止提交到 GitHub。密钥只由 FastAPI
-后端读取，浏览器端不会获得密钥。未配置密钥或 DeepSeek 暂时不可用时，
-界面会明确标记为 `Local fallback`，不会冒充模型结果。
-
-公开部署前还应设置：
-
-```dotenv
-ONCALL_RATE_LIMIT_PER_MINUTE=5
-ONCALL_DAILY_LIMIT=30
-ONCALL_ALLOW_RULE_FALLBACK=true
-```
-
-当前公开输入支持事故描述，以及最多 5 个 `.txt`、`.log`、`.json` 或
-`.md` 文件。文件总文本不得超过 40,000 字符。上传前必须删除密码、令牌、
-个人信息和其他敏感数据。
-
-面向公开演示和简历展示的事故响应智能体（Incident Response Agent）。系统将用户报告、指标、日志、链路追踪和变更事件转换为可审计证据，生成可验证的根因假设，并通过安全门控限制恢复建议。
-
-## 当前能力
-
-- 自由文本事故输入与三个合成事故场景；
-- 证据、假设和恢复建议严格分层；
-- 配置密钥后由 DeepSeek 生成结构化分析；未配置或服务异常时明确回退到本地确定性基线；
-- 支持上传经过脱敏的日志、JSON、Markdown 和文本遥测文件；
-- 证据不足时返回明确的不确定性，不编造根因；
-- 所有生产写操作默认要求人工批准；
-- FastAPI 自动 API 文档；
-- 响应式公开展示页面；
-- 请求限流、安全响应头、Docker 和自动化测试。
-
-## 系统结构
-
-```text
-浏览器
-  ├─ 首页、项目介绍、事故输入和执行轨迹
-  └─ POST /api/analyze
-          ↓
-FastAPI
-  ├─ Observe：规范化用户报告和遥测证据
-  ├─ Correlate：关联信号与变更事件
-  ├─ DeepSeek：只基于已编号证据生成结构化候选分析
-  ├─ Validate：校验证据引用、字段结构和模型输出
-  ├─ Diagnose：生成并排序可验证假设；异常时使用确定性基线
-  └─ Gate：把建议映射为只读、需审批或禁止
-```
-
-## Windows 快速启动
-
-双击 `run.bat`，或在 PowerShell 中运行：
-
-```powershell
 ./run.ps1
 ```
 
-然后打开：
+- Web：`http://127.0.0.1:8000`
+- API 文档：`http://127.0.0.1:8000/docs`
+- 健康检查：`http://127.0.0.1:8000/api/health`
 
-- Web 界面：http://127.0.0.1:8000
-- API 文档：http://127.0.0.1:8000/docs
-- 健康检查：http://127.0.0.1:8000/api/health
+未配置 `DEEPSEEK_API_KEY` 时，服务明确使用本地确定性回退，不会冒充模型结果。
 
-## 手动启动
+## 环境变量
 
-```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```dotenv
+ONCALL_ENV=production
+ONCALL_RATE_LIMIT_PER_MINUTE=5
+ONCALL_DAILY_LIMIT=30
+ONCALL_ALLOW_RULE_FALLBACK=true
+ONCALL_STATUS_CACHE_SECONDS=300
+ONCALL_STATUS_SCENARIO_LIMIT=6
+ONCALL_MAX_RUNS=100
+ONCALL_MAX_DOCUMENTS=20
+ONCALL_MAX_SESSIONS=100
+ONCALL_MAX_SESSION_MESSAGES=16
+
+DEEPSEEK_API_KEY=你的服务端密钥
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_MAX_TOKENS=2200
 ```
+
+密钥只能配置在服务端环境变量中，不得写入 `frontend/` 或 Git。DeepSeek 官方在 2026-07-31 发布的 V4 Flash API 仍使用 `deepseek-v4-flash` 模型名。
 
 ## 测试
 
@@ -99,42 +99,44 @@ py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-## Docker
+测试覆盖：真实事故映射、HTML 清理、来源追踪、上游失败快照回退、证据引用校验、危险建议阻断、Agent 五阶段轨迹、人工审批边界和 API 端到端流程。
 
-```bash
-docker compose up --build
+## Railway 部署
+
+仓库已包含 `Dockerfile` 与 `railway.json`：
+
+- Dockerfile 监听 Railway 注入的 `PORT`；本地默认端口为 `8000`。
+- 健康检查路径为 `/api/health`。
+- 构建器固定为 Dockerfile。
+
+从本目录部署：
+
+```powershell
+railway login
+railway init
+railway variables set ONCALL_ENV=production ONCALL_ALLOW_RULE_FALLBACK=true ONCALL_STATUS_CACHE_SECONDS=300 ONCALL_STATUS_SCENARIO_LIMIT=6 ONCALL_MAX_RUNS=100
+railway variables set DEEPSEEK_API_KEY=你的密钥 DEEPSEEK_BASE_URL=https://api.deepseek.com DEEPSEEK_MODEL=deepseek-v4-flash DEEPSEEK_MAX_TOKENS=2200
+railway up
+railway domain
 ```
 
-## Render 公网部署
+若通过本仓库连接 GitHub 部署，Railway 服务的 Root Directory 保持为空（仓库根目录）；平台会直接读取根目录下的 `Dockerfile` 与 `railway.json`。
 
-仓库根目录的 `render.yaml` 定义了 FastAPI Web Service、健康检查、新加坡区域、
-公开演示限流和 DeepSeek 环境变量。导入 Blueprint 时，Render 会要求单独输入
-`DEEPSEEK_API_KEY`；密钥不会进入 Git 仓库。
+## GitHub Pages
 
-免费实例适合简历演示，但空闲 15 分钟后会休眠，首次访问可能需要约一分钟唤醒。
-若需要稳定的面试演示延迟，应改用付费实例。
+`.github/workflows/pages.yml` 会把 `frontend/` 作为静态站点发布。前端通过
+`frontend/config.js` 中的公开 Railway URL 请求后端，密钥不会进入 Pages。
 
-## 上线前配置
+发布要求：
 
-编辑 `frontend/config.js`：
-
-```js
-window.ONCALL_CONFIG = {
-  ownerName: "你的姓名",
-  repositoryUrl: "https://github.com/你的用户名/oncall-agent",
-  resumeUrl: "你的简历地址",
-};
-```
+1. 仓库默认分支为 `main`；
+2. Repository Settings → Pages → Source 选择 `GitHub Actions`；
+3. Railway CORS 只允许 localhost 与 `*.github.io`，不携带 Cookie 凭据；
+4. 推送到 `main` 后查看 `Deploy frontend to GitHub Pages` 工作流。
 
 ## 安全边界
 
-当前版本不会执行 Shell、数据库写入、流量切换或回滚操作。推荐措施只能作为人工决策输入。DeepSeek API 密钥仅由后端环境变量读取，不得写入 `frontend/`、Git 仓库或浏览器配置。上传的事故文本和文件会发送给 DeepSeek，公开演示前必须完成脱敏。
-
-## 后续扩展
-
-1. 增加 OpenTelemetry、Prometheus、Loki 或 Elasticsearch 只读连接器；
-2. 增加匿名会话配额、验证码和成本监控，防止公开链接被滥用；
-3. 使用历史事故建立检索增强生成（Retrieval-Augmented Generation, RAG）；
-4. 对根因排序、证据引用率和修复建议安全性建立离线评测集；
-5. 部署到支持 Python 后端的云平台并绑定独立域名。
-
+- GitHub Status URL 在后端固定，不接受用户提供的主机，避免服务端请求伪造（Server-Side Request Forgery, SSRF）。
+- 外部状态文本在后端去除 HTML，前端使用 `textContent` 构建节点，避免跨站脚本（Cross-Site Scripting, XSS）。
+- 上传内容会发送给已配置的 DeepSeek API；上传前必须删除密钥、令牌、个人信息和其他敏感数据。
+- 公共应用不执行 Shell、数据库写入、流量切换或自动回滚。
