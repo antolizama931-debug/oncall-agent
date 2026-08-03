@@ -85,6 +85,8 @@ function impactLabel(impact) {
 function statusLabel(status) {
   return {
     resolved: "已恢复",
+    ready: "准备就绪",
+    analyzing: "分析中",
     investigating: "调查中",
     identified: "已定位",
     monitoring: "监控中",
@@ -94,6 +96,36 @@ function statusLabel(status) {
     rejected: "已拒绝",
     blocked: "已阻断",
   }[status] || status || "未知";
+}
+
+function dataModeLabel(mode) {
+  return {
+    live: "实时数据",
+    "verified-snapshot": "已验证快照",
+    "not-loaded": "等待加载",
+    online: "在线",
+    connecting: "连接中",
+    loading: "加载中",
+  }[mode] || mode || "状态未知";
+}
+
+function riskLabel(risk) {
+  return {
+    "read-only": "只读建议",
+    "approval-required": "需要人工审批",
+    blocked: "已阻断",
+  }[risk] || risk || "风险未知";
+}
+
+function toolStageLabel(tool) {
+  return {
+    "github_status.read": "读取 GitHub Status 事故",
+    "incident.input": "读取脱敏事故输入",
+    "evidence.normalize": "规范化证据",
+    "diagnosis.rank": "排序根因假设",
+    "citations.validate": "校验证据引用",
+    "policy.gate": "执行安全门控",
+  }[tool] || tool;
 }
 
 async function api(path, options = {}) {
@@ -106,7 +138,7 @@ async function api(path, options = {}) {
   });
   let body = null;
   try { body = await response.json(); } catch (_) { body = null; }
-  if (!response.ok) throw new Error(body?.detail || `Request failed (${response.status})`);
+  if (!response.ok) throw new Error(body?.detail || `请求失败（HTTP ${response.status}）`);
   return body;
 }
 
@@ -130,7 +162,7 @@ function landingHeader() {
     <header class="landing-header shell">
       <a class="brand" href="#landing" aria-label="OnCall Agent 首页"><span class="brand-glyph">OC</span><span>OnCall <b>Agent</b></span></a>
       <nav><a href="#capabilities">能力</a><a href="#incidents">真实数据</a><a href="#architecture">架构</a></nav>
-      <div class="header-actions"><span class="runtime-pill"><i></i>${state.dashboard?.data_mode || "connecting"}</span><a class="text-link" href="#home">打开控制台 ${icon("arrow", 14)}</a></div>
+      <div class="header-actions"><span class="runtime-pill"><i></i>${dataModeLabel(state.dashboard?.data_mode || "connecting")}</span><a class="text-link" href="#home">打开事故控制台 ${icon("arrow", 14)}</a></div>
     </header>`;
 }
 
@@ -141,27 +173,27 @@ function renderLanding() {
     <main>
       <section class="landing-hero shell">
         <div class="hero-copy">
-          <span class="eyebrow"><i></i> REAL INCIDENT RESPONSE RUNTIME</span>
+          <span class="eyebrow"><i></i> 真实事故响应运行时</span>
           <h1>让每一次故障，<em>都留下可验证的答案。</em></h1>
           <p>OnCall Agent 从真实公开事故中提取证据，生成可证伪的根因假设，并在任何生产动作之前执行人工审批门控。</p>
           <div class="hero-buttons"><a class="button primary" href="#home">进入事故控制台 ${icon("arrow", 16)}</a><a class="button secondary" href="#incidents">查看真实事故</a></div>
           <div class="hero-footnote"><span>${icon("shield", 15)} 不执行生产写操作</span><span>${icon("link", 15)} 每条证据可追溯</span></div>
         </div>
-        <div class="hero-runtime" aria-label="OnCall Agent execution preview">
+        <div class="hero-runtime" aria-label="OnCall Agent 执行预览">
           <div class="runtime-window">
-            <div class="runtime-bar"><span><i></i><i></i><i></i></span><b>agent_run.trace</b><small>LIVE</small></div>
-            <div class="runtime-incident"><span class="severity-badge sev1">SEV-1</span><div><small>INCIDENT REPLAY</small><strong>GitHub service degradation</strong></div><span class="source-chip">GitHub Status</span></div>
+            <div class="runtime-bar"><span><i></i><i></i><i></i></span><b>Agent 运行轨迹</b><small>实时</small></div>
+            <div class="runtime-incident"><span class="severity-badge sev1">SEV-1</span><div><small>事故回放</small><strong>GitHub 服务性能下降</strong></div><span class="source-chip">GitHub Status</span></div>
             <div class="agent-flow">
-              <div class="flow-node active"><span>01</span><div><b>Observe</b><small>normalize public signals</small></div><i></i></div>
+              <div class="flow-node active"><span>01</span><div><b>观察（Observe）</b><small>规范化公开信号</small></div><i></i></div>
               <div class="flow-line"></div>
-              <div class="flow-node active"><span>02</span><div><b>Diagnose</b><small>rank testable causes</small></div><i></i></div>
+              <div class="flow-node active"><span>02</span><div><b>诊断（Diagnose）</b><small>排序可验证根因</small></div><i></i></div>
               <div class="flow-line"></div>
-              <div class="flow-node guarded"><span>03</span><div><b>Safety gate</b><small>human approval required</small></div><i></i></div>
+              <div class="flow-node guarded"><span>03</span><div><b>安全门控</b><small>需要人工审批</small></div><i></i></div>
             </div>
-            <div class="runtime-result"><div><span>PRIMARY HYPOTHESIS</span><strong>Downstream dependency degradation</strong></div><b>74%</b></div>
+            <div class="runtime-result"><div><span>首要根因假设</span><strong>下游依赖服务性能下降</strong></div><b>74%</b></div>
           </div>
-          <div class="floating-card card-source"><span>${icon("database", 17)}</span><div><b>Real source</b><small>statuspage API</small></div></div>
-          <div class="floating-card card-policy"><span>${icon("shield", 17)}</span><div><b>Policy gated</b><small>no auto-remediation</small></div></div>
+          <div class="floating-card card-source"><span>${icon("database", 17)}</span><div><b>真实数据源</b><small>Statuspage API</small></div></div>
+          <div class="floating-card card-policy"><span>${icon("shield", 17)}</span><div><b>策略门控</b><small>禁止自动修复</small></div></div>
         </div>
       </section>
 
@@ -173,31 +205,31 @@ function renderLanding() {
       </section>
 
       <section class="capability-section shell" id="capabilities">
-        <div class="section-heading"><div><span>ONCALL CONTROL PLANE</span><h2>不是聊天框，<br/>是受约束的 Agent Runtime。</h2></div><p>观察、证据、假设、动作和授权严格分层。每个阶段都能被测试、回放和审计。</p></div>
+        <div class="section-heading"><div><span>OnCall 控制平面</span><h2>不是普通聊天框，<br/>而是受约束的 Agent 运行时。</h2></div><p>观察、证据、假设、动作和授权严格分层。每个阶段都能被测试、回放和审计。</p></div>
         <div class="capability-grid">
-          <article class="cap-card violet"><div class="cap-icon">${icon("database", 25)}</div><span>01 / CONNECT</span><h3>真实事故连接器</h3><p>服务端读取固定白名单 GitHub Status API，失败时回退到带来源链接的验证快照。</p><footer>Live + replay ${icon("arrow", 15)}</footer></article>
-          <article class="cap-card orange"><div class="cap-icon">${icon("layers", 25)}</div><span>02 / REASON</span><h3>证据约束诊断</h3><p>模型只能引用已编号证据；缺少区分性遥测时，系统明确降低置信度并请求补充数据。</p><footer>Evidence first ${icon("arrow", 15)}</footer></article>
-          <article class="cap-card blue"><div class="cap-icon">${icon("activity", 25)}</div><span>03 / TRACE</span><h3>完整执行轨迹</h3><p>工具调用、目的、输出摘要、时延和只读属性进入同一条 Agent Run，可直接检查。</p><footer>Observable loop ${icon("arrow", 15)}</footer></article>
-          <article class="cap-card green"><div class="cap-icon">${icon("shield", 25)}</div><span>04 / GOVERN</span><h3>人工审批门控</h3><p>置信度从不等于授权。高风险建议进入审批或阻断状态，公开实例不执行任何恢复操作。</p><footer>Human in control ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card violet"><div class="cap-icon">${icon("database", 25)}</div><span>01 / 数据连接</span><h3>真实事故连接器</h3><p>服务端读取固定白名单 GitHub Status API，失败时回退到带来源链接的验证快照。</p><footer>实时读取与事故回放 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card orange"><div class="cap-icon">${icon("layers", 25)}</div><span>02 / 诊断推理</span><h3>证据约束诊断</h3><p>模型只能引用已编号证据；缺少区分性遥测时，系统明确降低置信度并请求补充数据。</p><footer>证据优先 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card blue"><div class="cap-icon">${icon("activity", 25)}</div><span>03 / 执行追踪</span><h3>完整执行轨迹</h3><p>工具调用、目的、输出摘要、时延和只读属性进入同一条 Agent Run，可直接检查。</p><footer>可观察执行循环 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card green"><div class="cap-icon">${icon("shield", 25)}</div><span>04 / 安全治理</span><h3>人工审批门控</h3><p>置信度从不等于授权。高风险建议进入审批或阻断状态，公开实例不执行任何恢复操作。</p><footer>人工保留最终控制权 ${icon("arrow", 15)}</footer></article>
         </div>
       </section>
 
       <section class="incident-section" id="incidents"><div class="shell">
-        <div class="section-heading compact"><div><span>LIVE INCIDENT FEED</span><h2>从真实事故开始调查</h2></div><p>每条记录保留来源、事故 ID、时间线与数据新鲜度。</p></div>
+        <div class="section-heading compact"><div><span>实时事故数据流</span><h2>从真实事故开始调查</h2></div><p>每条记录保留来源、事故 ID、时间线与数据新鲜度；原始事故正文保留来源语言，避免改变证据含义。</p></div>
         <div id="landing-incidents" class="landing-incidents"></div>
         <a class="wide-link" href="#home"><span>打开完整事故控制台</span>${icon("arrow", 18)}</a>
       </div></section>
 
       <section class="architecture-section shell" id="architecture">
-        <div class="section-heading"><div><span>EXECUTION MODEL</span><h2>五个工具阶段，<br/>一条可验证路径。</h2></div><p>Agent 运行不是隐藏的黑箱。每个工具只承担一个明确职责，并在最终建议前通过策略门控。</p></div>
+        <div class="section-heading"><div><span>执行模型</span><h2>五个工具阶段，<br/>一条可验证路径。</h2></div><p>Agent 运行不是隐藏的黑箱。每个工具只承担一个明确职责，并在最终建议前通过策略门控。</p></div>
         <div class="architecture-flow">
           ${["github_status.read","evidence.normalize","diagnosis.rank","citations.validate","policy.gate"].map((item, index) => `<div class="arch-node"><span>0${index + 1}</span><b>${item}</b><small>${["读取事故","规范证据","排序假设","验证引用","风险决策"][index]}</small></div>${index < 4 ? '<i>→</i>' : ''}`).join("")}
         </div>
       </section>
 
-      <section class="landing-cta"><div><span>START AN INVESTIGATION</span><h2>把真实事故放进<br/>可审计的 Agent Loop。</h2><a class="button dark" href="#/customer-service">进入 Agent 工作台 ${icon("arrow", 17)}</a></div></section>
+      <section class="landing-cta"><div><span>开始一次可审计调查</span><h2>把真实事故放进<br/>可审计的 Agent 循环。</h2><a class="button dark" href="#/customer-service">进入知识库 Agent ${icon("arrow", 17)}</a></div></section>
     </main>
-    <footer class="landing-footer shell"><div class="brand"><span class="brand-glyph">OC</span><span>OnCall Agent</span></div><p>Evidence-grounded incident response · Railway deployment</p><a href="${config.repositoryUrl || "#"}" target="_blank" rel="noopener noreferrer">Source ${icon("external", 13)}</a></footer>`;
+    <footer class="landing-footer shell"><div class="brand"><span class="brand-glyph">OC</span><span>OnCall Agent</span></div><p>证据约束型事故响应 · Railway 部署</p><a href="${config.repositoryUrl || "#"}" target="_blank" rel="noopener noreferrer">查看源代码 ${icon("external", 13)}</a></footer>`;
   renderIncidentCards(document.querySelector("#landing-incidents"), state.scenarios.slice(0, 3), true);
 }
 
@@ -212,12 +244,12 @@ function renderIncidentCards(container, items, landing = false) {
     const article = node("article", landing ? "incident-preview" : "incident-row");
     const meta = node("div", "incident-meta");
     const severity = node("span", `severity-badge ${severityClass(scenario.request.severity)}`, scenario.request.severity);
-    const source = node("span", "source-chip", scenario.data_mode);
+    const source = node("span", "source-chip", dataModeLabel(scenario.data_mode));
     meta.append(severity, source);
     const title = node("h3", "", scenario.title);
     const description = node("p", "", scenario.request.description);
     const facts = node("div", "incident-facts");
-    [scenario.request.service, `${scenario.update_count} updates`, formatDate(scenario.started_at)].forEach((text, factIndex) => {
+    [scenario.request.service, `${scenario.update_count} 条公开更新`, formatDate(scenario.started_at)].forEach((text, factIndex) => {
       const span = node("span", "");
       span.innerHTML = factIndex === 2 ? icon("clock", 13) : factIndex === 1 ? icon("activity", 13) : icon("database", 13);
       span.append(document.createTextNode(text));
@@ -240,17 +272,17 @@ function appSidebar(active = "home") {
     <a class="sidebar-brand" href="#landing"><span>OC</span></a>
     <nav>
       <a class="${active === "home" ? "active" : ""}" href="#home" title="事故控制台">${icon("grid", 20)}</a>
-      <a class="${active === "runs" ? "active" : ""}" href="#home#runs" title="Agent Runs">${icon("pulse", 20)}</a>
+      <a class="${active === "runs" ? "active" : ""}" href="#home#runs" title="Agent 运行记录">${icon("pulse", 20)}</a>
       <a href="#landing#architecture" title="系统架构">${icon("layers", 20)}</a>
     </nav>
-    <div class="sidebar-bottom"><span class="live-orb" title="Runtime online"></span><button title="Session">${icon("user", 18)}</button></div>
+    <div class="sidebar-bottom"><span class="live-orb" title="运行时在线"></span><button title="当前会话">${icon("user", 18)}</button></div>
   </aside>`;
 }
 
 function appTopbar(title = "事故控制台") {
   return `<header class="app-topbar">
     <div><button class="mobile-menu">${icon("menu", 18)}</button><a href="#landing">OnCall Agent</a><i>/</i><strong>${title}</strong></div>
-    <div class="topbar-right"><span class="runtime-pill"><i></i>${state.dashboard?.data_mode || state.health?.incident_data_mode || "online"}</span><button>${icon("search", 17)}</button><button>${icon("bell", 17)}</button><span class="avatar">OP</span></div>
+    <div class="topbar-right"><span class="runtime-pill"><i></i>${dataModeLabel(state.dashboard?.data_mode || state.health?.incident_data_mode || "online")}</span><button title="搜索">${icon("search", 17)}</button><button title="通知">${icon("bell", 17)}</button><span class="avatar" title="演示操作员">操作</span></div>
   </header>`;
 }
 
@@ -258,25 +290,25 @@ function renderDashboard() {
   document.body.className = "page-app";
   app.innerHTML = `<div class="app-frame">${appSidebar("home")}<div class="app-main">${appTopbar("事故控制台")}
     <main class="dashboard shell-app">
-      <section class="dashboard-heading"><div><span>INCIDENT OPERATIONS</span><h1>事故控制台</h1><p>选择真实事故启动 Agent Run，或提交你自己的脱敏遥测。</p></div><button class="button primary" id="new-incident">${icon("plus", 16)} 新建调查</button></section>
+      <section class="dashboard-heading"><div><span>事故响应与运行审计</span><h1>事故控制台</h1><p>用于选择真实事故、启动一次受约束的 Agent 调查，并查看证据、根因假设、处置建议和人工审批记录。</p></div><button class="button primary" id="new-incident">${icon("plus", 16)} 新建调查</button></section>
       <section class="metric-grid">
-        <article><span>真实事故</span><strong>${state.dashboard?.incident_count ?? state.scenarios.length}</strong><small>${state.dashboard?.source_name || "GitHub Status"} · ${state.dashboard?.data_mode || "—"}</small><i class="metric-icon purple">${icon("database", 20)}</i></article>
+        <article><span>真实事故</span><strong>${state.dashboard?.incident_count ?? state.scenarios.length}</strong><small>${state.dashboard?.source_name || "GitHub Status"} · ${dataModeLabel(state.dashboard?.data_mode || "—")}</small><i class="metric-icon purple">${icon("database", 20)}</i></article>
         <article><span>未解决事件</span><strong>${state.dashboard?.unresolved_count ?? 0}</strong><small>基于公开状态字段</small><i class="metric-icon orange">${icon("pulse", 20)}</i></article>
-        <article><span>本次会话 Runs</span><strong>${state.runs.length}</strong><small>进程内审计记录</small><i class="metric-icon blue">${icon("terminal", 20)}</i></article>
+        <article><span>本次会话运行</span><strong>${state.runs.length}</strong><small>进程内审计记录</small><i class="metric-icon blue">${icon("terminal", 20)}</i></article>
         <article><span>待审批</span><strong>${state.runs.filter((run) => run.status === "awaiting-approval").length}</strong><small>不会自动执行动作</small><i class="metric-icon green">${icon("shield", 20)}</i></article>
       </section>
       <section class="dashboard-grid">
-        <div class="panel incident-panel"><header><div><span>REAL INCIDENTS</span><h2>GitHub Status 事故流</h2></div><span class="sync-label"><i></i>${state.dashboard?.data_mode || "loading"}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></div>
+        <div class="panel incident-panel"><header><div><span>真实公开事故</span><h2>GitHub Status 事故流</h2><small class="source-language-note">原始事故标题和正文保留来源语言</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></div>
         <aside class="dashboard-side">
-          <section class="panel runtime-card"><header><div><span>RUNTIME</span><h2>Agent 状态</h2></div><span class="healthy-chip">在线</span></header>
-            <div class="runtime-brand"><span>OC</span><div><strong>${state.health?.model || "model"}</strong><small>${state.health?.deepseek_configured ? "LLM configured" : "Deterministic fallback"}</small></div></div>
-            <dl><div><dt>证据连接器</dt><dd>GitHub Status</dd></div><div><dt>工具阶段</dt><dd>5</dd></div><div><dt>写操作权限</dt><dd>禁用</dd></div><div><dt>运行存储</dt><dd>Process-local</dd></div></dl>
+          <section class="panel runtime-card"><header><div><span>运行时状态</span><h2>Agent 状态</h2></div><span class="healthy-chip">在线</span></header>
+            <div class="runtime-brand"><span>OC</span><div><strong>${state.health?.model || "模型信息未加载"}</strong><small>${state.health?.deepseek_configured ? "大语言模型已配置" : "使用确定性降级分析"}</small></div></div>
+            <dl><div><dt>证据连接器</dt><dd>GitHub Status</dd></div><div><dt>工具阶段</dt><dd>5 个</dd></div><div><dt>写操作权限</dt><dd>已禁用</dd></div><div><dt>运行记录</dt><dd>进程内存</dd></div></dl>
           </section>
-          <section class="panel run-history" id="runs"><header><div><span>SESSION MEMORY</span><h2>最近运行</h2></div><span>${state.runs.length}</span></header><div id="run-list"></div></section>
+          <section class="panel run-history" id="runs"><header><div><span>本次会话记录</span><h2>最近运行</h2></div><span>${state.runs.length}</span></header><div id="run-list"></div></section>
         </aside>
       </section>
     </main></div></div>
-    <div class="modal" id="incident-modal" hidden><div class="modal-backdrop" data-close></div><form class="modal-card" id="incident-form"><header><div><span>CUSTOM INCIDENT</span><h2>新建脱敏调查</h2></div><button type="button" data-close>${icon("x", 18)}</button></header><p>提交描述和最小上下文。请勿上传密码、令牌、个人信息或生产机密。</p><label>服务名称<input name="service" maxlength="120" value="unknown-service" required></label><label>严重级别<select name="severity"><option>SEV-1</option><option selected>SEV-2</option><option>SEV-3</option><option>UNKNOWN</option></select></label><label>事故描述<textarea name="description" minlength="10" maxlength="6000" rows="7" placeholder="描述症状、影响、时间窗口和已有遥测…" required></textarea></label><footer><button type="button" class="button secondary" data-close>取消</button><button type="submit" class="button primary">启动 Agent ${icon("arrow", 15)}</button></footer></form></div>`;
+    <div class="modal" id="incident-modal" hidden><div class="modal-backdrop" data-close></div><form class="modal-card" id="incident-form"><header><div><span>自定义事故输入</span><h2>新建脱敏调查</h2></div><button type="button" data-close aria-label="关闭">${icon("x", 18)}</button></header><p>提交事故描述和必要上下文。请勿上传密码、令牌、个人信息或生产机密。</p><label>服务名称<input name="service" maxlength="120" value="unknown-service" required></label><label>严重级别<select name="severity"><option>SEV-1</option><option selected>SEV-2</option><option>SEV-3</option><option value="UNKNOWN">未知</option></select></label><label>事故描述<textarea name="description" minlength="10" maxlength="6000" rows="7" placeholder="描述症状、影响范围、时间窗口和已有遥测……" required></textarea></label><footer><button type="button" class="button secondary" data-close>取消</button><button type="submit" class="button primary">启动 Agent ${icon("arrow", 15)}</button></footer></form></div>`;
   renderIncidentCards(document.querySelector("#dashboard-incidents"), state.scenarios);
   renderRuns(document.querySelector("#run-list"), state.runs.slice(0, 5));
   bindDashboardEvents();
@@ -286,7 +318,7 @@ function renderRuns(container, runs) {
   container.replaceChildren();
   if (!runs.length) {
     const empty = node("div", "run-empty");
-    empty.innerHTML = `${icon("terminal", 21)}<strong>尚无 Agent Run</strong><p>从左侧真实事故中启动一次调查。</p>`;
+    empty.innerHTML = `${icon("terminal", 21)}<strong>尚无 Agent 运行记录</strong><p>从真实事故列表中启动一次调查。</p>`;
     container.append(empty);
     return;
   }
@@ -344,22 +376,22 @@ async function createRun(input) {
 
 function renderWorkbench(scenario, run = null) {
   document.body.className = "page-workbench";
-  const title = run?.title || scenario?.title || "Incident investigation";
+  const title = run?.title || scenario?.title || "事故调查";
   const service = run?.service || scenario?.request.service || "unknown-service";
   const severity = run?.severity || scenario?.request.severity || "UNKNOWN";
   const currentStatus = run?.status || scenario?.incident_status || "ready";
   app.innerHTML = `<div class="workbench-frame">${appSidebar("runs")}<div class="workbench-main">${appTopbar("Agent 工作台")}
     <main class="workbench-body">
       <section class="agent-canvas">
-        <header><div><span class="canvas-eyebrow">INCIDENT GRAPH / ${run?.run_id || scenario?.source_incident_id || "NEW"}</span><h1>${run ? "Agent Run 执行图" : "准备启动事故调查"}</h1></div><div class="canvas-controls"><button>${icon("plus", 16)}</button><button>−</button><button>${icon("grid", 16)}</button></div></header>
-        <div class="canvas-grid"><div class="graph-source"><span class="node-kicker">INCIDENT</span><div class="graph-icon">${icon("pulse", 21)}</div><strong id="graph-title"></strong><small id="graph-service"></small><i class="connector"></i></div><div class="graph-path" id="graph-path"></div></div>
-        <footer><span>${icon("layers", 15)} Evidence graph</span><span>${icon("shield", 15)} Production writes disabled</span></footer>
+        <header><div><span class="canvas-eyebrow">事故执行图 / ${run?.run_id || scenario?.source_incident_id || "新建"}</span><h1>${run ? "Agent 运行执行图" : "准备启动事故调查"}</h1></div><div class="canvas-controls"><button title="放大">${icon("plus", 16)}</button><button title="缩小">−</button><button title="适应画布">${icon("grid", 16)}</button></div></header>
+        <div class="canvas-grid"><div class="graph-source"><span class="node-kicker">事故输入</span><div class="graph-icon">${icon("pulse", 21)}</div><strong id="graph-title"></strong><small id="graph-service"></small><i class="connector"></i></div><div class="graph-path" id="graph-path"></div></div>
+        <footer><span>${icon("layers", 15)} 证据执行图</span><span>${icon("shield", 15)} 生产写操作已禁用</span></footer>
       </section>
       <aside class="investigation-panel">
-        <header class="panel-head"><div><span class="panel-agent-mark">OC</span><div><h2>OnCall Agent</h2><p>Evidence-grounded runtime</p></div></div><a href="#home" aria-label="关闭">${icon("x", 18)}</a></header>
+        <header class="panel-head"><div><span class="panel-agent-mark">OC</span><div><h2>OnCall Agent</h2><p>证据约束型运行时</p></div></div><a href="#home" aria-label="关闭">${icon("x", 18)}</a></header>
         <nav class="panel-tabs"><button class="active">调查</button><button>证据</button><button>动作</button><button>边界</button></nav>
         <section class="incident-summary"><div class="summary-top"><span class="severity-badge ${severityClass(severity)}">${severity}</span><span class="run-state ${currentStatus}">${statusLabel(currentStatus)}</span></div><h3 id="panel-title"></h3><div class="summary-facts"><span>${icon("database", 14)} <b id="panel-service"></b></span><span>${icon("clock", 14)} ${formatDate(run?.created_at || scenario?.started_at)}</span></div>${(run?.source_url || scenario?.source_url) ? `<a class="source-link" href="${run?.source_url || scenario?.source_url}" target="_blank" rel="noopener noreferrer">查看原始事故 ${icon("external", 13)}</a>` : ""}</section>
-        <div class="panel-scroll"><section class="agent-steps"><header><span>AGENT LOOP</span><small>${run ? `${run.tool_calls.length} tools` : "ready"}</small></header><div id="agent-steps"></div></section><section id="analysis-output"></section></div>
+        <div class="panel-scroll"><section class="agent-steps"><header><span>Agent 执行循环</span><small>${run ? `${run.tool_calls.length} 个工具阶段` : "准备就绪"}</small></header><div id="agent-steps"></div></section><section id="analysis-output"></section></div>
         <footer class="panel-actions" id="panel-actions"></footer>
       </aside>
     </main></div></div>`;
@@ -373,9 +405,9 @@ function renderWorkbench(scenario, run = null) {
 
 function renderScenarioDetails(scenario) {
   const path = document.querySelector("#graph-path");
-  ["Load incident", "Normalize", "Diagnose", "Validate", "Safety gate"].forEach((label, index) => {
+  ["读取事故", "规范化证据", "诊断根因", "校验引用", "安全门控"].forEach((label, index) => {
     const item = node("div", `graph-tool pending tool-${index + 1}`);
-    item.innerHTML = `<span>0${index + 1}</span><div><b>${label}</b><small>waiting</small></div><i></i>`;
+    item.innerHTML = `<span>0${index + 1}</span><div><b>${label}</b><small>等待执行</small></div><i></i>`;
     path.append(item);
   });
   const steps = document.querySelector("#agent-steps");
@@ -413,7 +445,7 @@ function renderRunDetails(run) {
     const item = node("div", `graph-tool success tool-${tool.sequence}`);
     const seq = node("span", "", String(tool.sequence).padStart(2, "0"));
     const copy = node("div", "");
-    copy.append(node("b", "", tool.tool), node("small", "", `${tool.duration_ms}ms · read-only`));
+    copy.append(node("b", "", toolStageLabel(tool.tool)), node("small", "", `${tool.duration_ms} 毫秒 · 只读`));
     const check = node("i", "");
     check.innerHTML = icon("check", 13);
     item.append(seq, copy, check);
@@ -425,7 +457,7 @@ function renderRunDetails(run) {
     const stateIcon = node("span", "tool-check");
     stateIcon.innerHTML = icon("check", 13);
     const copy = node("div", "");
-    copy.append(node("strong", "", tool.tool), node("p", "", tool.output_summary));
+    copy.append(node("strong", "", toolStageLabel(tool.tool)), node("p", "", tool.output_summary));
     const time = node("small", "", `${tool.duration_ms}ms`);
     row.append(stateIcon, copy, time);
     steps.append(row);
@@ -433,7 +465,7 @@ function renderRunDetails(run) {
 
   const output = document.querySelector("#analysis-output");
   const primary = run.analysis.hypotheses[0];
-  output.innerHTML = `<section class="analysis-card"><header><span>PRIMARY HYPOTHESIS</span><b>${Math.round(primary.confidence * 100)}%</b></header><h3></h3><p></p><div class="evidence-tags"></div></section><section class="action-card"><header><span>RECOMMENDED ACTION</span><b class="risk-chip ${run.analysis.recommendation.risk_level}">${run.analysis.recommendation.risk_level}</b></header><p></p><details><summary>验证与回滚</summary><div class="validation-list"></div><strong>Rollback</strong><p class="rollback"></p></details></section><section class="boundary-card"><span>${icon("shield", 17)}</span><p>公开实例仅记录审批决定，<b>不会执行</b>流量切换、回滚、Shell 或数据库写入。</p></section>`;
+  output.innerHTML = `<section class="analysis-card"><header><span>首要根因假设</span><b>${Math.round(primary.confidence * 100)}%</b></header><h3></h3><p></p><div class="evidence-tags"></div></section><section class="action-card"><header><span>建议处置动作</span><b class="risk-chip ${run.analysis.recommendation.risk_level}">${riskLabel(run.analysis.recommendation.risk_level)}</b></header><p></p><details><summary>验证与回滚</summary><div class="validation-list"></div><strong>回滚方案</strong><p class="rollback"></p></details></section><section class="boundary-card"><span>${icon("shield", 17)}</span><p>公开实例仅记录审批决定，<b>不会执行</b>流量切换、回滚、Shell 或数据库写入。</p></section>`;
   output.querySelector(".analysis-card h3").textContent = primary.title;
   output.querySelector(".analysis-card > p").textContent = primary.rationale;
   const evidenceTags = output.querySelector(".evidence-tags");
@@ -471,7 +503,7 @@ async function decideRun(run, decision) {
   try {
     const updated = await api(`/api/runs/${encodeURIComponent(run.run_id)}/decision`, {
       method: "POST",
-      body: JSON.stringify({ decision, operator: "web-demo-operator", note: "Decision recorded from public control plane" }),
+      body: JSON.stringify({ decision, operator: "web-demo-operator", note: "公开控制台记录的人工决定，未执行生产动作" }),
     });
     state.activeRun = updated;
     state.runs = state.runs.map((item) => item.run_id === updated.run_id ? updated : item);
@@ -498,20 +530,21 @@ function renderKnowledgeMessages() {
   container.innerHTML = "";
   if (!state.chatMessages.length) {
     const welcome = node("div", "knowledge-message assistant");
-    welcome.innerHTML = `<span class="message-avatar">AI</span><div><p>你好，我是 OnCall Knowledge Agent。你可以上传 PDF、Markdown 或 TXT 文档，然后基于知识库提问。</p></div>`;
+    welcome.innerHTML = `<span class="message-avatar">AI</span><div><p>我是 OnCall 知识库 Agent。系统已接入 GitHub Status 真实事故；你也可以上传 PDF、Markdown 或 TXT 文档。回答会同时使用 BM25 词法检索与 BGE 中文向量检索，并通过 RRF 融合结果。</p></div>`;
     container.append(welcome);
     return;
   }
   state.chatMessages.forEach((message) => {
     const row = node("div", `knowledge-message ${message.role}`);
-    const avatar = node("span", "message-avatar", message.role === "assistant" ? "AI" : "YOU");
+    const avatar = node("span", "message-avatar", message.role === "assistant" ? "AI" : "用户");
     const body = node("div");
     body.append(node("p", "", message.content));
     if (message.citations?.length) {
       const citations = node("div", "message-citations");
       message.citations.forEach((citation) => {
-        const chip = node("span", "", `${citation.citation_id} · ${citation.document_name}`);
-        chip.title = citation.excerpt;
+        const signalText = citation.retrieval_signals?.join(" + ") || "检索命中";
+        const chip = node("span", "", `${citation.citation_id} · ${citation.source_type || citation.document_name}`);
+        chip.title = `${signalText}\n${citation.document_name}\n${citation.excerpt}`;
         citations.append(chip);
       });
       body.append(citations);
@@ -526,8 +559,8 @@ function paintKnowledgeStatus() {
   const status = state.knowledgeStatus;
   if (!status) return;
   const values = {
-    "#knowledge-document-count": `${status.document_count} 份`,
-    "#knowledge-types": status.supported_types.join(" · "),
+    "#knowledge-document-count": `${status.document_count} 份 / ${status.chunk_count} 个分块`,
+    "#knowledge-types": status.source_types.length ? status.source_types.join(" · ") : "等待数据",
     "#knowledge-retriever": status.retriever,
     "#knowledge-storage": status.storage,
     "#memory-turns": `${Math.floor(state.chatMessages.length / 2)} 轮`,
@@ -549,7 +582,7 @@ function paintKnowledgeStatus() {
     const documentIcon = node("span", "document-icon");
     documentIcon.innerHTML = icon("database", 15);
     const copy = node("div");
-    copy.append(node("strong", "", document.name), node("small", "", `${document.chunk_count} chunks · ${document.character_count} chars`));
+    copy.append(node("strong", "", document.name), node("small", "", `${document.source_type} · ${document.chunk_count} 个分块 · ${document.character_count} 个字符`));
     row.append(documentIcon, copy);
     list.append(row);
   });
@@ -559,7 +592,7 @@ function paintAgentTrace(trace = []) {
   const container = document.querySelector("#knowledge-trace");
   if (!container) return;
   container.innerHTML = "";
-  const stages = trace.length ? trace : ["Intent Agent", "Retriever", "LLM Agent", "Guard", "Answer Ready"];
+  const stages = trace.length ? trace : ["问题识别", "数据源路由", "混合检索", "RRF 融合", "答案生成", "安全校验"];
   stages.forEach((stage, index) => {
     const item = node("span", "", stage.includes(":") ? stage.split(":")[0] : stage);
     item.title = stage;
@@ -629,25 +662,25 @@ async function uploadKnowledgeFile(input) {
   } finally {
     input.value = "";
     button.disabled = false;
-    button.textContent = "上传知识库";
+    button.textContent = "上传本地知识文档";
   }
 }
 
 async function renderCustomerService() {
   document.body.className = "page-knowledge";
-  app.innerHTML = `<header class="knowledge-topbar"><div class="knowledge-topbar-inner"><a href="#landing">← 返回导航</a><div class="knowledge-brand"><span>OC</span><div><strong>OnCall Knowledge Agent</strong><small>Evidence-grounded RAG workspace</small></div></div><span class="runtime-pill"><i></i>Agent Runtime Online</span></div></header>
+  app.innerHTML = `<header class="knowledge-topbar"><div class="knowledge-topbar-inner"><a href="#landing">← 返回导航页</a><div class="knowledge-brand"><span>OC</span><div><strong>OnCall 知识库 Agent</strong><small>证据约束型 RAG 工作台</small></div></div><span class="runtime-pill"><i></i>Agent 运行时在线</span></div></header>
     <main class="knowledge-page shell-wide">
-      <section class="knowledge-hero"><div><span>ONCALL AGENT PLAYGROUND</span><h1>让运行知识，<br/>真正被 Agent 理解</h1></div><div><p>上传事故手册、复盘报告或系统说明，通过检索增强生成（RAG）获得带来源的回答。</p><p>支持 PDF、Markdown、TXT 文档与有上限的会话记忆。</p></div></section>
+      <section class="knowledge-hero"><div><span>OnCall Agent 知识工作台</span><h1>让运行知识，<br/>真正被 Agent 理解</h1></div><div><p>检索增强生成（RAG）同时读取 GitHub Status 真实事故和用户上传文档，回答保留可核对来源。</p><p>检索链路：BM25 精确召回 + BGE 中文语义召回 + RRF 排名融合。支持 PDF、Markdown、TXT 和有上限的会话记忆。</p></div></section>
       <section class="knowledge-layout">
         <article class="knowledge-chat-card">
-          <header><div class="knowledge-agent-title"><span>AI</span><div><strong>OnCall Knowledge Agent</strong><small><i></i> Knowledge Base Online</small></div></div><b>RAG PLAYGROUND</b></header>
+          <header><div class="knowledge-agent-title"><span>AI</span><div><strong>OnCall 知识库 Agent</strong><small><i></i> 知识库在线</small></div></div><b>混合检索 RAG</b></header>
           <div class="knowledge-messages" id="knowledge-messages"></div>
-          <section class="knowledge-trace-panel"><header><strong>AGENT TRACE</strong><span>READY</span></header><div id="knowledge-trace" class="knowledge-trace"></div></section>
-          <section class="knowledge-composer"><h3>快捷示例</h3><div class="knowledge-prompts"><button>项目如何限制危险操作？</button><button>会话记忆如何工作？</button><button>知识库采用什么检索方式？</button></div><form id="knowledge-form"><input name="question" minlength="2" maxlength="4000" placeholder="输入知识库问题…" autocomplete="off" required><button type="submit">发送 →</button></form></section>
+          <section class="knowledge-trace-panel"><header><strong>RAG 执行轨迹</strong><span>准备就绪</span></header><div id="knowledge-trace" class="knowledge-trace"></div></section>
+          <section class="knowledge-composer"><h3>快捷问题</h3><div class="knowledge-prompts"><button>这个项目如何限制危险操作？</button><button>会话记忆如何工作？</button><button>混合检索采用了哪些技术？</button><button>最近的 GitHub 事故有哪些？</button></div><form id="knowledge-form"><input name="question" minlength="2" maxlength="4000" placeholder="请输入要检索的知识库问题……" autocomplete="off" required><button type="submit">发送问题 →</button></form></section>
         </article>
         <aside class="knowledge-sidebar">
-          <section class="knowledge-status-card"><header><h2>知识库状态</h2><span>已连接</span></header><div class="knowledge-banner"><strong>RAG</strong><small>Knowledge Base</small></div><div class="knowledge-stat-grid"><div><span>文档数量</span><strong id="knowledge-document-count">0 份</strong></div><div><span>文件类型</span><strong id="knowledge-types">PDF · MD</strong></div><div><span>Retriever</span><strong id="knowledge-retriever">Loading</strong></div><div><span>Storage</span><strong id="knowledge-storage">Loading</strong></div></div><div id="knowledge-document-list" class="knowledge-document-list"></div><input id="knowledge-file" type="file" accept=".pdf,.md,.markdown,.txt" hidden><button id="upload-knowledge-button" class="knowledge-upload">上传知识库</button><small class="upload-help">单文件最大 5 MB · 服务重启后清空</small></section>
-          <section class="knowledge-memory-card"><header><h2>会话记忆</h2><span>MEMORY ON</span></header><dl><div><dt>Session ID</dt><dd id="memory-session">Loading</dd></div><div><dt>历史消息轮数</dt><dd id="memory-turns">0 轮</dd></div><div><dt>上下文窗口</dt><dd>最近 8 条消息</dd></div><div><dt>存储边界</dt><dd>Process-local</dd></div></dl><button id="clear-memory">清空本次会话</button></section>
+          <section class="knowledge-status-card"><header><h2>知识库状态</h2><span>已连接</span></header><div class="knowledge-banner"><strong>Hybrid RAG</strong><small>BM25 + BGE + RRF</small></div><div class="knowledge-stat-grid"><div><span>文档与分块</span><strong id="knowledge-document-count">正在加载</strong></div><div><span>数据来源</span><strong id="knowledge-types">正在加载</strong></div><div><span>检索器</span><strong id="knowledge-retriever">正在加载</strong></div><div><span>存储方式</span><strong id="knowledge-storage">正在加载</strong></div></div><div id="knowledge-document-list" class="knowledge-document-list"></div><input id="knowledge-file" type="file" accept=".pdf,.md,.markdown,.txt" hidden><button id="upload-knowledge-button" class="knowledge-upload">上传本地知识文档</button><small class="upload-help">支持 PDF、Markdown、TXT · 单文件最大 5 MB · 服务重启后清空</small></section>
+          <section class="knowledge-memory-card"><header><h2>会话记忆</h2><span>记忆已启用</span></header><dl><div><dt>会话 ID</dt><dd id="memory-session">正在创建</dd></div><div><dt>历史对话轮数</dt><dd id="memory-turns">0 轮</dd></div><div><dt>上下文窗口</dt><dd>最近 8 条消息</dd></div><div><dt>存储边界</dt><dd>进程内存</dd></div></dl><button id="clear-memory">清空本次会话</button></section>
         </aside>
       </section>
     </main>`;
@@ -695,14 +728,14 @@ async function renderRunRoute(runId) {
 
 function renderError() {
   document.body.className = "page-landing";
-  app.innerHTML = `${landingHeader()}<main class="error-page"><span>CONNECTION ERROR</span><h1>无法连接 OnCall Runtime</h1><p></p><button class="button primary">重新连接</button></main>`;
-  app.querySelector(".error-page p").textContent = state.error || "Unknown error";
+  app.innerHTML = `${landingHeader()}<main class="error-page"><span>连接错误</span><h1>无法连接 OnCall Agent 运行时</h1><p></p><button class="button primary">重新连接</button></main>`;
+  app.querySelector(".error-page p").textContent = state.error || "发生未知错误";
   app.querySelector("button").addEventListener("click", () => { state.loading = true; renderLoading(); loadData(); });
 }
 
 function renderLoading() {
   document.body.className = "page-landing";
-  app.innerHTML = `<div class="boot-screen"><span class="boot-mark">OC</span><div class="boot-line"><i></i></div><p>Connecting evidence runtime…</p></div>`;
+  app.innerHTML = `<div class="boot-screen"><span class="boot-mark">OC</span><div class="boot-line"><i></i></div><p>正在连接证据运行时……</p></div>`;
 }
 
 function renderRoute() {

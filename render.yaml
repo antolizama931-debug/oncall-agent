@@ -29,6 +29,8 @@ services:
         value: "100"
       - key: ONCALL_MAX_SESSION_MESSAGES
         value: "16"
+      - key: ONCALL_DENSE_MIN_SCORE
+        value: "0.36"
       - key: DEEPSEEK_API_KEY
         sync: false
       - key: DEEPSEEK_BASE_URL

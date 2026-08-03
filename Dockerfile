@@ -1,12 +1,17 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    FASTEMBED_CACHE_PATH=/opt/fastembed_cache
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Cache the compact Chinese embedding model in the image. This avoids a model
+# download on the first public query and keeps the Railway runtime deterministic.
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-zh-v1.5')"
 
 COPY app ./app
 COPY frontend ./frontend

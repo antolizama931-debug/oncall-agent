@@ -220,6 +220,8 @@ class KnowledgeDocument(BaseModel):
     document_id: str
     name: str
     media_type: str
+    source_type: str = "用户上传"
+    source_url: str | None = None
     character_count: int = Field(ge=0)
     chunk_count: int = Field(ge=0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -227,16 +229,24 @@ class KnowledgeDocument(BaseModel):
 
 class KnowledgeStatus(BaseModel):
     document_count: int = Field(ge=0)
+    uploaded_document_count: int = Field(default=0, ge=0)
+    source_document_count: int = Field(default=0, ge=0)
     chunk_count: int = Field(ge=0)
     supported_types: list[str]
     retriever: str
     storage: str
+    embedding_model: str | None = None
+    retrieval_mode: str = "词法检索"
+    source_types: list[str] = Field(default_factory=list)
 
 
 class KnowledgeCitation(BaseModel):
     citation_id: str
     document_id: str
     document_name: str
+    source_type: str = "用户上传"
+    source_url: str | None = None
+    retrieval_signals: list[str] = Field(default_factory=list)
     excerpt: str
     relevance: float = Field(ge=0.0, le=1.0)
 

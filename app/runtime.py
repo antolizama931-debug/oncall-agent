@@ -34,6 +34,23 @@ def _run_status(analysis: IncidentAnalysis) -> RunStatus:
     return RunStatus.COMPLETED
 
 
+def _analysis_mode_label(mode: str) -> str:
+    return {
+        "deepseek": "DeepSeek 模型分析",
+        "deterministic": "确定性规则分析",
+        "deterministic-fallback": "确定性降级分析",
+        "deterministic-unconfigured": "未配置模型时的确定性分析",
+    }.get(mode, mode)
+
+
+def _risk_label(risk: RiskLevel) -> str:
+    return {
+        RiskLevel.READ_ONLY: "只读建议",
+        RiskLevel.APPROVAL_REQUIRED: "需要人工审批",
+        RiskLevel.BLOCKED: "已阻断",
+    }[risk]
+
+
 def _tool_calls(analysis: IncidentAnalysis, sourced: bool) -> list[ToolCall]:
     trace = {step.stage: step for step in analysis.trace}
     observe = trace.get("observe")
@@ -44,45 +61,45 @@ def _tool_calls(analysis: IncidentAnalysis, sourced: bool) -> list[ToolCall]:
         ToolCall(
             sequence=1,
             tool="github_status.read" if sourced else "incident.input",
-            purpose="Load public incident timeline" if sourced else "Accept operator evidence",
+            purpose="读取公开事故时间线" if sourced else "接收操作员提供的证据",
             status="succeeded",
             output_summary=(
-                "Loaded a fixed-host GitHub Status replay"
+                "已读取固定可信主机上的 GitHub Status 事故回放"
                 if sourced
-                else "Validated operator-supplied incident fields"
+                else "已校验操作员提交的事故字段"
             ),
             duration_ms=observe.duration_ms if observe else 0,
         ),
         ToolCall(
             sequence=2,
             tool="evidence.normalize",
-            purpose="Separate observations from hypotheses",
+            purpose="分离观察事实与根因假设",
             status="succeeded",
-            output_summary=f"Produced {len(analysis.evidence)} typed evidence records",
+            output_summary=f"已生成 {len(analysis.evidence)} 条结构化证据记录",
             duration_ms=correlate.duration_ms if correlate else 0,
         ),
         ToolCall(
             sequence=3,
             tool="diagnosis.rank",
-            purpose="Generate and rank testable hypotheses",
+            purpose="生成并排序可验证的根因假设",
             status="succeeded",
-            output_summary=f"Ranked {len(analysis.hypotheses)} hypotheses via {analysis.analysis_mode}",
+            output_summary=f"已通过{_analysis_mode_label(analysis.analysis_mode)}排序 {len(analysis.hypotheses)} 个假设",
             duration_ms=diagnose.duration_ms if diagnose else 0,
         ),
         ToolCall(
             sequence=4,
             tool="citations.validate",
-            purpose="Reject unsupported evidence references",
+            purpose="拒绝没有证据支持的引用",
             status="succeeded",
-            output_summary="Validated hypothesis citations against known evidence IDs",
+            output_summary="已根据已知证据 ID 校验假设引用",
             duration_ms=4,
         ),
         ToolCall(
             sequence=5,
             tool="policy.gate",
-            purpose="Map recommendation risk to an execution boundary",
+            purpose="将处置建议风险映射到执行边界",
             status="succeeded",
-            output_summary=f"Decision: {analysis.recommendation.risk_level.value}",
+            output_summary=f"风险决策：{_risk_label(analysis.recommendation.risk_level)}",
             duration_ms=gate.duration_ms if gate else 0,
         ),
     ]
@@ -146,7 +163,7 @@ class AgentRunStore:
             if run is None:
                 return None
             if run.status != RunStatus.AWAITING_APPROVAL:
-                raise ValueError("Run is not awaiting approval")
+                raise ValueError("该运行记录当前不处于待审批状态")
             run.approval = ApprovalRecord(
                 decision=request.decision,
                 operator=request.operator,

@@ -73,8 +73,8 @@ memory_store = SessionMemoryStore(
 
 app = FastAPI(
     title="OnCall Agent API",
-    version="0.2.0",
-    description="Evidence-grounded OnCall Agent runtime with real incident replays and approval gates.",
+    version="0.3.0",
+    description="基于真实事故、混合检索和人工审批门控的 OnCall Agent 运行时。",
 )
 
 # Same-origin deployment does not need CORS. Localhost origins are allowed only for
@@ -103,7 +103,7 @@ async def security_and_rate_limit(request: Request, call_next):
         if len(window) >= RATE_LIMIT:
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                content={"detail": "Rate limit exceeded. Try again in one minute."},
+                content={"detail": "请求过于频繁，请一分钟后重试。"},
             )
         current_day = datetime.now(timezone.utc).date().isoformat()
         stored_day, count = daily_usage.get(client, (current_day, 0))
@@ -112,7 +112,7 @@ async def security_and_rate_limit(request: Request, call_next):
         if count >= DAILY_LIMIT:
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                content={"detail": "Daily public-demo limit exceeded. Try again tomorrow."},
+                content={"detail": "今日公开演示额度已用完，请明天再试。"},
             )
         window.append(now)
         daily_usage[client] = (current_day, count + 1)
@@ -143,15 +143,22 @@ def health() -> dict[str, str | bool | int]:
 
 @app.get("/api/scenarios", response_model=list[Scenario])
 async def list_scenarios() -> list[Scenario]:
-    return await status_client.get_scenarios()
+    return await _scenarios_with_knowledge()
+
+
+async def _scenarios_with_knowledge() -> list[Scenario]:
+    """获取真实事故并幂等同步到知识库的第二类数据源。"""
+    scenarios = await status_client.get_scenarios()
+    knowledge_store.sync_scenarios(scenarios)
+    return scenarios
 
 
 @app.get("/api/scenarios/{key}", response_model=Scenario)
 async def get_scenario(key: str) -> Scenario:
-    scenarios = await status_client.get_scenarios()
+    scenarios = await _scenarios_with_knowledge()
     scenario = next((item for item in scenarios if item.key == key), None)
     if scenario is None:
-        raise HTTPException(status_code=404, detail="Unknown scenario")
+        raise HTTPException(status_code=404, detail="未找到该事故")
     return scenario
 
 
@@ -189,7 +196,7 @@ async def analyze(payload: IncidentRequest) -> IncidentAnalysis:
 
 @app.get("/api/dashboard", response_model=DashboardSummary)
 async def dashboard() -> DashboardSummary:
-    scenarios = await status_client.get_scenarios()
+    scenarios = await _scenarios_with_knowledge()
     return DashboardSummary(
         incident_count=len(scenarios),
         unresolved_count=sum(item.incident_status not in {"resolved", "postmortem"} for item in scenarios),
@@ -207,13 +214,13 @@ async def create_run(payload: AgentRunRequest) -> AgentRun:
     scenario: Scenario | None = None
     incident = payload.incident
     if payload.scenario_key is not None:
-        scenarios = await status_client.get_scenarios()
+        scenarios = await _scenarios_with_knowledge()
         scenario = next((item for item in scenarios if item.key == payload.scenario_key), None)
         if scenario is None:
-            raise HTTPException(status_code=404, detail="Unknown scenario")
+            raise HTTPException(status_code=404, detail="未找到该事故")
         incident = scenario.request
     if incident is None:  # Defensive; Pydantic already enforces this invariant.
-        raise HTTPException(status_code=422, detail="Incident input is required")
+        raise HTTPException(status_code=422, detail="必须提供事故输入")
     analysis = await _analyze_payload(incident)
     return run_store.create(
         request=incident,
@@ -232,7 +239,7 @@ def list_runs(session_id: str | None = None) -> list[AgentRun]:
 def get_run(run_id: str) -> AgentRun:
     run = run_store.get(run_id)
     if run is None:
-        raise HTTPException(status_code=404, detail="Unknown run")
+        raise HTTPException(status_code=404, detail="未找到该运行记录")
     return run
 
 
@@ -243,17 +250,19 @@ def decide_run(run_id: str, payload: ApprovalRequest) -> AgentRun:
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if run is None:
-        raise HTTPException(status_code=404, detail="Unknown run")
+        raise HTTPException(status_code=404, detail="未找到该运行记录")
     return run
 
 
 @app.get("/api/knowledge/status", response_model=KnowledgeStatus)
-def knowledge_status() -> KnowledgeStatus:
+async def knowledge_status() -> KnowledgeStatus:
+    await _scenarios_with_knowledge()
     return knowledge_store.status()
 
 
 @app.get("/api/knowledge/documents", response_model=list[KnowledgeDocument])
-def list_knowledge_documents() -> list[KnowledgeDocument]:
+async def list_knowledge_documents() -> list[KnowledgeDocument]:
+    await _scenarios_with_knowledge()
     return knowledge_store.list()
 
 
@@ -282,12 +291,16 @@ def clear_session(session_id: str) -> dict[str, bool]:
 
 @app.post("/api/chat", response_model=KnowledgeChatResponse)
 async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse:
+    await _scenarios_with_knowledge()
     citations = knowledge_store.search(payload.question, top_k=payload.top_k)
     history = memory_store.history(payload.session_id)
+    status_snapshot = knowledge_store.status()
     trace = [
-        "intent.classify: knowledge-question",
-        f"retriever.search: {len(citations)} relevant chunks",
-        f"memory.load: {len(history)} previous messages",
+        "问题识别：知识库问答",
+        f"数据源路由：{len(status_snapshot.source_types)} 类数据源",
+        f"混合检索：召回 {len(citations)} 个相关分块",
+        "RRF 融合：合并 BM25 与 BGE 中文向量排名",
+        f"会话记忆：读取 {len(history)} 条历史消息",
     ]
     usage = None
     if deepseek_client is not None:
@@ -298,19 +311,20 @@ async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse
                 history=history,
             )
             analysis_mode = "deepseek-rag" if citations else "deepseek-general"
-            trace.append("llm.answer: DeepSeek response validated")
+            trace.append("答案生成：DeepSeek 已返回响应")
         except DeepSeekError:
             if not ALLOW_RULE_FALLBACK:
                 raise HTTPException(status_code=502, detail="DeepSeek answer is temporarily unavailable")
             answer = _knowledge_fallback(citations)
             analysis_mode = "retrieval-fallback"
-            trace.append("llm.answer: deterministic fallback used")
+            trace.append("答案生成：已使用确定性降级结果")
     else:
         answer = _knowledge_fallback(citations)
         analysis_mode = "retrieval-unconfigured"
-        trace.append("llm.answer: model is not configured")
+        trace.append("答案生成：模型未配置，返回检索原文")
     messages = memory_store.append_exchange(payload.session_id, payload.question, answer)
-    trace.append("memory.save: exchange stored in bounded process memory")
+    trace.append("安全校验：答案仅保留可追踪知识片段")
+    trace.append("会话写入：已保存到有上限的进程内存")
     return KnowledgeChatResponse(
         answer=answer,
         session_id=payload.session_id,
@@ -325,7 +339,7 @@ async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse
 
 def _knowledge_fallback(citations):
     if not citations:
-        return "知识库中暂无可用于回答该问题的内容。请先上传 PDF、Markdown 或 TXT 文档。"
+        return "当前知识库没有召回足以回答该问题的内容。你可以换一种问法，或上传相关 PDF、Markdown、TXT 文档。"
     excerpts = "\n\n".join(
         f"[{item.citation_id}] {item.document_name}: {item.excerpt[:320]}"
         for item in citations[:3]

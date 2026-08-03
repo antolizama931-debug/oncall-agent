@@ -40,13 +40,19 @@
 | `POST` | `/api/chat` | 执行检索增强问答并写入会话记忆 |
 | `GET/DELETE` | `/api/sessions/{session_id}` | 读取或清空本次会话 |
 
-## 知识库边界
+## RAG 检索架构
 
 - PDF 通过 `pypdf` 提取文本，Markdown/TXT 只按文本解析，不执行文档内指令。
-- 检索器是明确标注的 BM25 风格词法检索，不冒充向量 Embedding。
+- 多数据源：自动同步 GitHub Status 真实事故，同时接收用户上传的 PDF、Markdown 和 TXT。
+- 词法通道：BM25 召回故障码、服务名、命令和精确术语。
+- 语义通道：FastEmbed 运行 `BAAI/bge-small-zh-v1.5` 中文稠密向量模型，召回措辞不同但语义相近的内容。
+- 融合阶段：倒数排名融合（Reciprocal Rank Fusion, RRF）合并两路排名，避免直接相加量纲不同的 BM25 与余弦分数。
+- 可审计流程：问题识别 → 数据源路由 → 混合检索 → RRF 融合 → DeepSeek 生成 → 安全校验 → 有上限会话记忆。
 - 单文件最大 5 MB，提取文本最多 250,000 字符。
 - 文档、分块和会话均为进程内存储；Railway 重启后清空。
 - DeepSeek 只能依据返回的知识片段生成回答；API 密钥仅存在服务端。
+
+当前没有把系统标记为 Agentic RAG。项目只有两个只读数据源，固定、可审计的检索工作流已经覆盖当前需求；加入自主工具规划和反复检索循环会增加时延、成本与失控面。只有在增加日志、指标、Trace、CMDB 等多种异构连接器，并建立可衡量的检索评测集后，才适合验证 Agentic RAG 是否带来收益。
 
 ## 数据来源
 
@@ -84,6 +90,7 @@ ONCALL_MAX_RUNS=100
 ONCALL_MAX_DOCUMENTS=20
 ONCALL_MAX_SESSIONS=100
 ONCALL_MAX_SESSION_MESSAGES=16
+ONCALL_DENSE_MIN_SCORE=0.36
 
 DEEPSEEK_API_KEY=你的服务端密钥
 DEEPSEEK_BASE_URL=https://api.deepseek.com
@@ -99,7 +106,7 @@ DEEPSEEK_MAX_TOKENS=2200
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-测试覆盖：真实事故映射、HTML 清理、来源追踪、上游失败快照回退、证据引用校验、危险建议阻断、Agent 五阶段轨迹、人工审批边界和 API 端到端流程。
+测试覆盖：真实事故映射、HTML 清理、来源追踪、上游失败快照回退、BM25 与 BGE 中文语义召回、RRF 状态、证据引用校验、危险建议阻断、Agent 五阶段轨迹、人工审批边界和 API 端到端流程。
 
 ## Railway 部署
 
