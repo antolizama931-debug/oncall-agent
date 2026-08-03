@@ -506,6 +506,39 @@ body { font-size: 17px; line-height: 1.65; }
 .run-item { min-height: 76px; margin-inline: 18px; }
 .run-item strong { font-size: 14px; }
 .run-item small, .run-item > span { font-size: 11px; }
+.dashboard-actions { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
+.console-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 24px;
+  padding: 16px 18px;
+  border: 1px solid #d9d0f4;
+  border-radius: 13px;
+  color: #4b405b;
+  background: #f5f1ff;
+}
+.console-notice > span { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: var(--purple); background: white; }
+.console-notice strong { display: block; margin: 1px 0 4px; font-size: 14px; }
+.console-notice p { margin: 0; color: #756d80; font-size: 13px; line-height: 1.65; }
+.dashboard-operations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 18px; }
+.operation-pending { grid-column: 1 / -1; }
+.operation-panel { overflow: hidden; }
+.operation-panel > header small { display: block; max-width: 760px; margin-top: 7px; color: #817987; font-size: 13px; line-height: 1.5; }
+.operation-panel:not(.operation-pending) { min-height: 310px; }
+.operation-run-list { padding: 4px 8px 10px; }
+.operation-run-list .run-item { min-height: 78px; }
+.operation-run-list .run-empty { min-height: 205px; }
+.count-chip { min-width: 34px; padding: 7px 10px; border-radius: 999px; color: var(--purple); text-align: center; background: var(--purple-soft); font: 750 12px var(--mono); }
+.count-chip.warning { color: #a6542e; background: #ffeadf; }
+.count-chip.success { color: #167456; background: #ddf5eb; }
+.runtime-strip { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 18px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.66); }
+.runtime-strip > div { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.runtime-strip > div strong { font-size: 14px; }
+.runtime-strip dl { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); width: min(860px, 76%); margin: 0; }
+.runtime-strip dl div { padding: 0 18px; border-left: 1px solid var(--line); }
+.runtime-strip dt { margin-bottom: 5px; color: #8a828e; font-size: 11px; }
+.runtime-strip dd { overflow: hidden; margin: 0; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 1280px) {
   .capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -520,6 +553,7 @@ body { font-size: 17px; line-height: 1.65; }
   .landing-hero { grid-template-columns: 1fr; }.hero-copy { max-width: 800px; }.hero-runtime { width: min(680px, 100%); margin: auto; }.card-source { left: 0; }.card-policy { right: 0; }
   .landing-incidents { grid-template-columns: 1fr 1fr; }.landing-incidents article:last-child { display: none; }
   .dashboard-grid { grid-template-columns: 1fr; }.dashboard-side { grid-template-columns: 1fr 1fr; }.incident-row { grid-template-columns: 100px 1fr 220px 90px; }
+  .runtime-strip { align-items: flex-start; flex-direction: column; }.runtime-strip dl { width: 100%; }
   .workbench-body { grid-template-columns: 1fr 520px; }.graph-source { left: 8%; width: 200px; }.graph-path { left: 52%; }
   .knowledge-layout { grid-template-columns: 1fr; }.knowledge-sidebar { grid-template-columns: 1fr 1fr; }
 }
@@ -533,6 +567,7 @@ body { font-size: 17px; line-height: 1.65; }
 @media (max-width: 560px) {
   .shell { width: min(calc(100% - 28px), 1180px); }.landing-header { height: 66px; }.text-link { font-size: 0; }.hero-copy h1 { font-size: 48px; }.hero-copy > p { font-size: 13px; }.hero-buttons { flex-direction: column; }.hero-footnote { display: grid; }.hero-runtime { min-height: 370px; }.floating-card { display: none; }.runtime-window { transform: none; }.runtime-result { align-items: start; gap: 10px; }.proof-row { grid-template-columns: 1fr; }.proof-row > div { min-height: 85px; border-right: 0; border-bottom: 1px solid var(--line); }.capability-section, .architecture-section { padding-block: 90px; }.cap-card { min-height: 300px; padding: 24px; }.incident-section { padding-block: 90px; }.section-heading h2 { font-size: 38px; }.landing-cta { min-height: 430px; }.landing-cta h2 { font-size: 43px; }
   .app-topbar { padding: 0 14px; }.topbar-right .runtime-pill, .topbar-right button { display: none; }.dashboard { padding-top: 28px; }.dashboard-heading { align-items: start; flex-direction: column; }.metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.metric-grid article { min-width: 0; min-height: 125px; padding: 16px; }.metric-grid strong { font-size: 26px; }.metric-grid small { overflow-wrap: anywhere; }.incident-row { grid-template-columns: 73px minmax(0, 1fr); }.incident-row h3 { min-width: 0; overflow-wrap: anywhere; }.incident-row footer { grid-column: 1 / -1; display: flex; justify-content: space-between; }.dashboard-incidents { padding: 4px 10px; }
+  .dashboard-actions { width: 100%; }.dashboard-actions .button { flex: 1; }.dashboard-operations { grid-template-columns: 1fr; }.operation-pending { grid-column: auto; }.runtime-strip dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 0; }.runtime-strip dl div:nth-child(odd) { border-left: 0; padding-left: 0; }
   .agent-canvas { min-height: 610px; }.agent-canvas > header { padding: 20px; }.graph-source { left: 8%; top: 12%; width: 84%; }.graph-source .connector { left: 50%; right: auto; top: auto; bottom: -7px; }.graph-path { left: 8%; top: 40%; width: 84%; }.graph-path::before { display: none; }.panel-head, .incident-summary, .agent-steps, #analysis-output, .panel-actions { padding-inline: 16px; }.investigation-panel { min-width: 0; }
   .shell-wide, .knowledge-topbar-inner { width: min(calc(100% - 28px), 1320px); }.knowledge-topbar { height: 72px; }.knowledge-brand small { display: none; }.knowledge-hero h1 { font-size: 43px; }.knowledge-hero > div:last-child { font-size: 14px; }.knowledge-page { padding-top: 20px; }.knowledge-messages { height: 390px; padding-inline: 14px; }.knowledge-message > div { max-width: 86%; }.knowledge-composer form { grid-template-columns: 1fr; }.knowledge-composer form button { min-height: 46px; }.knowledge-trace { overflow-x: auto; flex-wrap: nowrap; }.knowledge-trace span { white-space: nowrap; }
 }

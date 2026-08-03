@@ -349,37 +349,40 @@ function appTopbar(title = "事故控制台") {
 
 function renderDashboard() {
   document.body.className = "page-app";
+  const investigationRuns = state.runs.filter((run) => ["analyzing", "blocked", "escalated"].includes(run.status));
+  const approvalRuns = state.runs.filter((run) => ["awaiting-approval", "approved"].includes(run.status));
+  const completedRuns = state.runs.filter((run) => ["completed", "recovered", "rolled-back", "rejected"].includes(run.status));
   app.innerHTML = `<div class="app-frame">${appSidebar("home")}<div class="app-main">${appTopbar("事故控制台")}
     <main class="dashboard shell-app">
-      <section class="dashboard-heading"><div><span>自动响应、调查、处置与沉淀</span><h1>事故控制台</h1><p>接收真实告警，聚合证据并生成根因假设；匹配标准 Runbook 后，经过策略门控完成处置演练、恢复验证、失败回滚和复盘候选。</p></div><button class="button primary" id="new-incident">${icon("plus", 16)} 新建调查</button></section>
+      <section class="dashboard-heading"><div><span>自动响应、调查、审批与复盘</span><h1>事故处理中心</h1><p>先从待处理事故启动调查，再查看 Agent 聚合的证据和根因判断；任何处置建议都必须经过人工审批，完成后自动保存验证结果和复盘记录。</p></div><div class="dashboard-actions"><a class="button secondary" href="#/customer-service">向 Agent 提问</a><button class="button primary" id="new-incident">${icon("plus", 16)} 新建事故</button></div></section>
+      <section class="console-notice"><span>${icon("shield", 18)}</span><div><strong>当前为安全演练环境</strong><p>事故数据来自 Wikimedia 官方公开状态页；系统不会连接或修改真实生产环境。接入企业监控和执行网关后，仍需使用权限控制、操作允许列表和人工审批。</p></div></section>
       <section class="metric-grid">
-        <article><span>真实事故</span><strong>${state.dashboard?.incident_count ?? state.scenarios.length}</strong><small>${state.dashboard?.source_name || "Wikimedia Status"} · ${dataModeLabel(state.dashboard?.data_mode || "—")}</small><i class="metric-icon purple">${icon("database", 20)}</i></article>
-        <article><span>未解决事件</span><strong>${state.dashboard?.unresolved_count ?? 0}</strong><small>基于公开状态字段</small><i class="metric-icon orange">${icon("pulse", 20)}</i></article>
-        <article><span>已恢复演练</span><strong>${state.dashboard?.recovered_count ?? 0}</strong><small>通过恢复条件验证</small><i class="metric-icon blue">${icon("terminal", 20)}</i></article>
-        <article><span>待审批</span><strong>${state.runs.filter((run) => run.status === "awaiting-approval").length}</strong><small>批准后仍只执行安全演练</small><i class="metric-icon green">${icon("shield", 20)}</i></article>
+        <article><span>01 · 待处理事故</span><strong>${state.dashboard?.incident_count ?? state.scenarios.length}</strong><small>选择事故并启动 Agent 调查</small><i class="metric-icon purple">${icon("database", 20)}</i></article>
+        <article><span>02 · Agent 调查</span><strong>${investigationRuns.length}</strong><small>收集证据、检索 Runbook、判断根因</small><i class="metric-icon orange">${icon("pulse", 20)}</i></article>
+        <article><span>03 · 操作审批</span><strong>${approvalRuns.length}</strong><small>核对风险、验证条件和回滚方案</small><i class="metric-icon blue">${icon("shield", 20)}</i></article>
+        <article><span>04 · 已完成事故</span><strong>${completedRuns.length}</strong><small>保存处置结果、恢复验证与复盘记录</small><i class="metric-icon green">${icon("check", 20)}</i></article>
       </section>
-      <section class="dashboard-grid">
-        <div class="panel incident-panel"><header><div><span>真实公开事故</span><h2>多源官方事故流</h2><small class="source-language-note">中文优先展示；英文原文可按需展开核对</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></div>
-        <aside class="dashboard-side">
-          <section class="panel runtime-card"><header><div><span>运行时状态</span><h2>Agent 状态</h2></div><span class="healthy-chip">在线</span></header>
-            <div class="runtime-brand"><span>OC</span><div><strong>${state.health?.model || "模型信息未加载"}</strong><small>${state.health?.deepseek_configured ? "大语言模型已配置" : "使用确定性降级分析"}</small></div></div>
-            <dl><div><dt>告警入口</dt><dd>${state.health?.webhook_configured ? "Webhook 已配置" : "等待企业凭据"}</dd></div><div><dt>遥测工具</dt><dd>${state.health?.tool_gateway_configured ? "企业网关已连接" : "公开站未连接"}</dd></div><div><dt>执行模式</dt><dd>安全演练</dd></div><div><dt>运行记录</dt><dd>SQLite 持久化</dd></div></dl>
-          </section>
-          <section class="panel run-history" id="runs"><header><div><span>本次会话记录</span><h2>最近运行</h2></div><span>${state.runs.length}</span></header><div id="run-list"></div></section>
-        </aside>
+      <section class="dashboard-operations">
+        <section class="panel incident-panel operation-panel operation-pending"><header><div><span>01 · 待处理事故</span><h2>公开事故待调查池</h2><small class="source-language-note">数据来自 ${state.dashboard?.source_name || "Wikimedia Status"}，用于验证调查流程，不代表你的企业正在发生这些事故。</small></div><span class="sync-label"><i></i>${dataModeLabel(state.dashboard?.data_mode || "loading")}</span></header><div id="dashboard-incidents" class="dashboard-incidents"></div></section>
+        <section class="panel operation-panel" id="investigations"><header><div><span>02 · Agent 调查</span><h2>正在调查</h2><small>查看证据采集、知识检索和根因判断过程</small></div><span class="count-chip">${investigationRuns.length}</span></header><div id="investigation-list" class="operation-run-list"></div></section>
+        <section class="panel operation-panel approval-panel" id="approvals"><header><div><span>03 · 操作审批</span><h2>等待人工决策</h2><small>批准前必须核对影响范围、风险、验证条件和回滚方案</small></div><span class="count-chip warning">${approvalRuns.length}</span></header><div id="approval-list" class="operation-run-list"></div></section>
+        <section class="panel operation-panel" id="completed"><header><div><span>04 · 已完成事故</span><h2>验证与复盘记录</h2><small>包括无需处置、恢复成功、回滚、拒绝和升级人工处理的结果</small></div><span class="count-chip success">${completedRuns.length}</span></header><div id="completed-list" class="operation-run-list"></div></section>
       </section>
+      <section class="runtime-strip"><div><span class="live-orb"></span><strong>Agent 运行正常</strong></div><dl><div><dt>模型</dt><dd>${state.health?.model || "未加载"}</dd></div><div><dt>告警入口</dt><dd>${state.health?.webhook_configured ? "Webhook 已连接" : "演示数据"}</dd></div><div><dt>遥测工具</dt><dd>${state.health?.tool_gateway_configured ? "企业网关已连接" : "未连接生产环境"}</dd></div><div><dt>执行模式</dt><dd>安全演练</dd></div></dl></section>
     </main></div></div>
     <div class="modal" id="incident-modal" hidden><div class="modal-backdrop" data-close></div><form class="modal-card" id="incident-form"><header><div><span>自定义事故输入</span><h2>新建脱敏调查</h2></div><button type="button" data-close aria-label="关闭">${icon("x", 18)}</button></header><p>提交事故描述和必要上下文。请勿上传密码、令牌、个人信息或生产机密。</p><label>服务名称<input name="service" maxlength="120" value="unknown-service" required></label><label>严重级别<select name="severity"><option>SEV-1</option><option selected>SEV-2</option><option>SEV-3</option><option value="UNKNOWN">未知</option></select></label><label>事故描述<textarea name="description" minlength="10" maxlength="6000" rows="7" placeholder="描述症状、影响范围、时间窗口和已有遥测……" required></textarea></label><footer><button type="button" class="button secondary" data-close>取消</button><button type="submit" class="button primary">启动 Agent ${icon("arrow", 15)}</button></footer></form></div>`;
   renderIncidentCards(document.querySelector("#dashboard-incidents"), state.scenarios);
-  renderRuns(document.querySelector("#run-list"), state.runs.slice(0, 5));
+  renderRuns(document.querySelector("#investigation-list"), investigationRuns, "暂无正在调查的事故", "从待处理事故中选择一条记录并启动 Agent。");
+  renderRuns(document.querySelector("#approval-list"), approvalRuns, "暂无待审批操作", "只有匹配到标准 Runbook 且需要处置的调查才会进入这里。");
+  renderRuns(document.querySelector("#completed-list"), completedRuns, "暂无已完成事故", "完成调查、验证或回滚后，记录会保存在这里。");
   bindDashboardEvents();
 }
 
-function renderRuns(container, runs) {
+function renderRuns(container, runs, emptyTitle = "尚无 Agent 运行记录", emptyBody = "从真实事故列表中启动一次调查。") {
   container.replaceChildren();
   if (!runs.length) {
     const empty = node("div", "run-empty");
-    empty.innerHTML = `${icon("terminal", 21)}<strong>尚无 Agent 运行记录</strong><p>从真实事故列表中启动一次调查。</p>`;
+    empty.innerHTML = `${icon("terminal", 21)}<strong>${emptyTitle}</strong><p>${emptyBody}</p>`;
     container.append(empty);
     return;
   }
