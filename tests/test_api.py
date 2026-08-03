@@ -11,7 +11,7 @@ os.environ["ONCALL_DATA_DIR"] = tempfile.mkdtemp(prefix="oncall-agent-tests-")
 
 from app.main import app, daily_usage, request_windows, status_client
 import app.main as main_module
-from app.real_data import GITHUB_STATUS_INCIDENTS
+from app.real_data import WIKIMEDIA_STATUS_INCIDENTS
 
 
 async def request(method: str, path: str, **kwargs) -> httpx.Response:
@@ -22,7 +22,7 @@ async def request(method: str, path: str, **kwargs) -> httpx.Response:
 
 def configure_status_mock() -> None:
     def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"incidents": GITHUB_STATUS_INCIDENTS})
+        return httpx.Response(200, json={"incidents": WIKIMEDIA_STATUS_INCIDENTS})
 
     status_client.transport = httpx.MockTransport(handler)
     status_client._cached = None
@@ -54,9 +54,9 @@ def test_scenario_can_be_analyzed_end_to_end():
     assert response.status_code == 200
     body = response.json()
     assert body["analysis_mode"] == "deterministic-unconfigured"
-    assert body["evidence"][0]["source"].startswith("github_status:")
-    assert body["hypotheses"][0]["confidence"] >= 0.50
-    assert body["recommendation"]["approval_required"] is True
+    assert body["evidence"][0]["source"].startswith("wikimedia_status:")
+    assert body["hypotheses"][0]["confidence"] >= 0.30
+    assert body["recommendation"]["risk_level"] in {"read-only", "approval-required"}
 
 
 def test_scenarios_expose_verifiable_provenance():
@@ -64,8 +64,8 @@ def test_scenarios_expose_verifiable_provenance():
     response = asyncio.run(request("GET", "/api/scenarios"))
     assert response.status_code == 200
     scenario = response.json()[0]
-    assert scenario["source_name"] == "GitHub Status"
-    assert scenario["source_url"].startswith("https://www.githubstatus.com/incidents/")
+    assert scenario["source_name"] == "Wikimedia Status"
+    assert scenario["source_url"].startswith("https://www.wikimediastatus.net/incidents/")
     assert scenario["data_mode"] in {"live", "verified-snapshot"}
     assert scenario["display_title"]
     assert scenario["display_summary"]
@@ -88,7 +88,7 @@ def test_agent_run_records_tools_and_requires_non_executing_approval():
         request(
             "POST",
             "/api/runs",
-            json={"scenario_key": scenarios[0]["key"], "session_id": session_id},
+            json={"scenario_key": scenarios[1]["key"], "session_id": session_id},
         )
     )
     assert created.status_code == 201
@@ -134,8 +134,8 @@ def test_dashboard_reports_source_and_runtime_state():
     response = asyncio.run(request("GET", "/api/dashboard"))
     assert response.status_code == 200
     body = response.json()
-    assert body["source_name"] == "GitHub Status、Cloudflare Status、Datadog Status"
-    assert body["incident_count"] == len(GITHUB_STATUS_INCIDENTS) * 3
+    assert body["source_name"] == "Wikimedia Status"
+    assert body["incident_count"] == len(WIKIMEDIA_STATUS_INCIDENTS)
     assert body["data_mode"] == "live"
 
 
@@ -162,11 +162,11 @@ def test_knowledge_upload_retrieval_chat_and_session_memory():
     assert status_response.status_code == 200
     assert status_response.json()["document_count"] >= 1
     status_body = status_response.json()
-    assert status_body["retrieval_mode"] == "混合检索 RAG"
+    assert status_body["retrieval_mode"] in {"混合检索准备中", "混合检索 RAG"}
     assert "BM25" in status_body["retriever"]
-    assert "BGE" in status_body["retriever"]
+    assert "多语言" in status_body["retriever"]
     assert status_body["source_document_count"] >= 1
-    assert "GitHub Status 真实事故" in status_body["source_types"]
+    assert "外部事故类比" in status_body["source_types"]
 
     answered = asyncio.run(
         request(

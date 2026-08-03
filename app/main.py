@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from collections import defaultdict, deque
@@ -41,6 +42,11 @@ from .models import (
 from .runtime import AgentRunStore
 from .knowledge import KnowledgeBaseStore, MAX_FILE_BYTES, SessionMemoryStore
 from .statuspage import MultiStatusClient
+from .public_sources import (
+    EXTERNAL_ANALOGIES,
+    UPSTREAM_OFFICIAL_REFERENCES,
+    WikimediaKnowledgeClient,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -59,8 +65,8 @@ WEBHOOK_TOKEN = os.getenv("ONCALL_WEBHOOK_TOKEN", "").strip()
 TOOL_GATEWAY_URL = os.getenv("ONCALL_TOOL_GATEWAY_URL", "").strip()
 TOOL_GATEWAY_TOKEN = os.getenv("ONCALL_TOOL_GATEWAY_TOKEN", "").strip()
 STATUS_CACHE_SECONDS = int(os.getenv("ONCALL_STATUS_CACHE_SECONDS", "300"))
-STATUS_SCENARIO_LIMIT = int(os.getenv("ONCALL_STATUS_SCENARIO_LIMIT", "36"))
-STATUS_PER_SOURCE_LIMIT = int(os.getenv("ONCALL_STATUS_PER_SOURCE_LIMIT", "12"))
+STATUS_SCENARIO_LIMIT = int(os.getenv("ONCALL_STATUS_SCENARIO_LIMIT", "20"))
+STATUS_PER_SOURCE_LIMIT = int(os.getenv("ONCALL_STATUS_PER_SOURCE_LIMIT", "20"))
 DATA_DIR_VALUE = (
     os.getenv("ONCALL_DATA_DIR", "").strip()
     or os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
@@ -85,6 +91,10 @@ status_client = MultiStatusClient(
     scenario_limit=STATUS_SCENARIO_LIMIT,
     per_source_limit=STATUS_PER_SOURCE_LIMIT,
 )
+wikimedia_knowledge_client = WikimediaKnowledgeClient(
+    cache_seconds=int(os.getenv("ONCALL_WIKIMEDIA_CACHE_SECONDS", "3600")),
+    incident_limit=int(os.getenv("ONCALL_WIKIMEDIA_INCIDENT_LIMIT", "18")),
+)
 run_store = AgentRunStore(
     max_runs=int(os.getenv("ONCALL_MAX_RUNS", "100")),
     data_dir=DATA_DIR,
@@ -99,6 +109,8 @@ knowledge_store = KnowledgeBaseStore(
     max_documents=int(os.getenv("ONCALL_MAX_DOCUMENTS", "50")),
     data_dir=DATA_DIR,
 )
+# 外部事故只作为低权重类比。同步过程不访问网络，也不会阻塞启动。
+knowledge_store.sync_public_documents([*UPSTREAM_OFFICIAL_REFERENCES, *EXTERNAL_ANALOGIES])
 memory_store = SessionMemoryStore(
     max_sessions=int(os.getenv("ONCALL_MAX_SESSIONS", "100")),
     recent_messages=int(os.getenv("ONCALL_MEMORY_RECENT_MESSAGES", "8")),
@@ -108,7 +120,7 @@ memory_store = SessionMemoryStore(
 
 app = FastAPI(
     title="OnCall Agent API",
-    version="0.5.0",
+    version="0.6.0",
     description="具备告警接入、诊断、Runbook 审批、处置演练、验证回滚与知识沉淀的 OnCall Agent。",
 )
 
@@ -188,19 +200,33 @@ def health() -> dict[str, str | bool | int]:
 
 @app.get("/api/scenarios", response_model=list[Scenario])
 async def list_scenarios() -> list[Scenario]:
-    return await _scenarios_with_knowledge()
+    return await _scenarios()
 
 
-async def _scenarios_with_knowledge() -> list[Scenario]:
-    """获取真实事故并幂等同步到知识库的第二类数据源。"""
-    scenarios = await status_client.get_scenarios()
+async def _scenarios() -> list[Scenario]:
+    """获取事故列表；此路径不得触发向量索引或知识库全量同步。"""
+    return await status_client.get_scenarios()
+
+
+async def _sync_knowledge_sources() -> KnowledgeStatus:
+    """显式同步分层数据源；失败只降级，不影响事故控制台。"""
+    scenarios, documents = await asyncio.gather(
+        status_client.get_scenarios(),
+        wikimedia_knowledge_client.get_documents(),
+    )
     knowledge_store.sync_scenarios(scenarios)
-    return scenarios
+    knowledge_store.sync_public_documents(documents)
+    return knowledge_store.status().model_copy(
+        update={
+            "sync_mode": wikimedia_knowledge_client.last_mode,
+            "sync_error": wikimedia_knowledge_client.last_error,
+        }
+    )
 
 
 @app.get("/api/scenarios/{key}", response_model=Scenario)
 async def get_scenario(key: str) -> Scenario:
-    scenarios = await _scenarios_with_knowledge()
+    scenarios = await _scenarios()
     scenario = next((item for item in scenarios if item.key == key), None)
     if scenario is None:
         raise HTTPException(status_code=404, detail="未找到该事故")
@@ -241,7 +267,7 @@ async def analyze(payload: IncidentRequest) -> IncidentAnalysis:
 
 @app.get("/api/dashboard", response_model=DashboardSummary)
 async def dashboard() -> DashboardSummary:
-    scenarios = await _scenarios_with_knowledge()
+    scenarios = await _scenarios()
     return DashboardSummary(
         incident_count=len(scenarios),
         unresolved_count=sum(item.incident_status not in {"resolved", "postmortem"} for item in scenarios),
@@ -262,7 +288,7 @@ async def create_run(payload: AgentRunRequest) -> AgentRun:
     scenario: Scenario | None = None
     incident = payload.incident
     if payload.scenario_key is not None:
-        scenarios = await _scenarios_with_knowledge()
+        scenarios = await _scenarios()
         scenario = next((item for item in scenarios if item.key == payload.scenario_key), None)
         if scenario is None:
             raise HTTPException(status_code=404, detail="未找到该事故")
@@ -390,14 +416,22 @@ async def ingest_enterprise_alert(
 
 
 @app.get("/api/knowledge/status", response_model=KnowledgeStatus)
-async def knowledge_status() -> KnowledgeStatus:
-    await _scenarios_with_knowledge()
-    return knowledge_store.status()
+def knowledge_status() -> KnowledgeStatus:
+    return knowledge_store.status().model_copy(
+        update={
+            "sync_mode": wikimedia_knowledge_client.last_mode,
+            "sync_error": wikimedia_knowledge_client.last_error,
+        }
+    )
+
+
+@app.post("/api/knowledge/sync", response_model=KnowledgeStatus)
+async def sync_knowledge() -> KnowledgeStatus:
+    return await _sync_knowledge_sources()
 
 
 @app.get("/api/knowledge/documents", response_model=list[KnowledgeDocument])
-async def list_knowledge_documents() -> list[KnowledgeDocument]:
-    await _scenarios_with_knowledge()
+def list_knowledge_documents() -> list[KnowledgeDocument]:
     return knowledge_store.list()
 
 
@@ -426,15 +460,14 @@ def clear_session(session_id: str) -> dict[str, bool]:
 
 @app.post("/api/chat", response_model=KnowledgeChatResponse)
 async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse:
-    await _scenarios_with_knowledge()
     citations = knowledge_store.search(payload.question, top_k=payload.top_k)
     memory_context = memory_store.context(payload.session_id)
     status_snapshot = knowledge_store.status()
     trace = [
         "问题识别：知识库问答",
-        f"数据源路由：{len(status_snapshot.source_types)} 类数据源",
+        f"数据源路由：Wikimedia 主域优先，共 {len(status_snapshot.namespaces)} 个隔离命名空间",
         f"混合检索：召回 {len(citations)} 个相关分块",
-        "RRF 融合：合并 BM25 与 BGE 中文向量排名",
+        "RRF 融合：合并 BM25 与多语言语义排名，并按来源权威度重排",
         (
             "会话记忆：滚动摘要"
             f"（{memory_context.summarized_message_count} 条已压缩）+ "
@@ -464,7 +497,10 @@ async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse
         analysis_mode = "retrieval-unconfigured"
         trace.append("答案生成：模型未配置，返回检索原文")
     updated_memory = memory_store.append_exchange(payload.session_id, payload.question, answer)
-    trace.append("安全校验：答案仅保留可追踪知识片段")
+    if citations and all(not item.applicable_for_action for item in citations):
+        trace.append("安全校验：当前证据不可直接用于生产操作，处置动作需要 Wikimedia Runbook 支持")
+    else:
+        trace.append("安全校验：答案仅保留可追踪知识片段，生产动作仍需人工审批")
     trace.append("会话写入：近期原文保存在进程内存，较早消息进入有界滚动摘要")
     return KnowledgeChatResponse(
         answer=answer,

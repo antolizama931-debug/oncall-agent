@@ -3,12 +3,12 @@
 检索采用两个互补通道：
 
 1. BM25 词法检索负责故障码、服务名、命令和精确术语；
-2. BGE 中文稠密向量负责语义相近但措辞不同的问题；
+2. 多语言稠密向量负责中英文语义相近但措辞不同的问题；
 3. 倒数排名融合（Reciprocal Rank Fusion, RRF）只融合名次，不直接相加
    两种量纲不同的原始分数。
 
-上传文档与多个官方 Statuspage 事故都会进入同一套可追踪分块。用户上传文档
-的提取文本写入 SQLite；公开事故按需重新拉取，不重复保存原始副本。
+用户上传文档、Wikimedia 主域资料和外部类比资料进入不同命名空间。检索结果
+按来源权威度重排，外部企业资料不能直接作为生产操作依据。
 """
 
 from __future__ import annotations
@@ -36,13 +36,14 @@ from .models import (
     KnowledgeStatus,
     Scenario,
 )
+from .public_sources import PublicKnowledgeRecord
 
 
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_TEXT_CHARACTERS = 250_000
 SUPPORTED_EXTENSIONS = {".pdf", ".md", ".markdown", ".txt"}
-DENSE_MODEL_NAME = "BAAI/bge-small-zh-v1.5"
-DENSE_MIN_SCORE = float(os.getenv("ONCALL_DENSE_MIN_SCORE", "0.36"))
+DENSE_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DENSE_MIN_SCORE = float(os.getenv("ONCALL_DENSE_MIN_SCORE", "0.25"))
 RRF_RANK_CONSTANT = 60
 RETRIEVAL_CANDIDATES = 20
 
@@ -54,6 +55,10 @@ class _Chunk:
     document_name: str
     source_type: str
     source_url: str | None
+    namespace: str
+    organization: str
+    authority_level: float
+    applicable_for_action: bool
     text: str
     tokens: Counter[str]
     embedding: tuple[float, ...] | None
@@ -162,6 +167,37 @@ def _cosine_similarity(left: tuple[float, ...], right: tuple[float, ...]) -> flo
     return numerator / (left_norm * right_norm)
 
 
+def _namespace_route_weight(query: str, chunk: _Chunk) -> float:
+    """按问题意图路由命名空间，不允许外部类比越过权威度约束。"""
+    normalized = query.lower()
+    action_intent = any(
+        token in normalized
+        for token in ("如何", "怎么", "检查", "排查", "处理", "修复", "恢复", "操作", "runbook", "rollback")
+    )
+    history_intent = any(
+        token in normalized for token in ("最近", "历史", "事故", "发生过", "时间线", "复盘", "incident")
+    )
+    if chunk.namespace == "user_uploads":
+        return 1.20
+    if action_intent:
+        return {
+            "wikimedia_runbooks": 1.55,
+            "upstream_official_docs": 1.10,
+            "wikimedia_incidents": 1.00,
+            "wikimedia_status": 0.82,
+            "external_postmortems": 0.70,
+        }.get(chunk.namespace, 1.0)
+    if history_intent:
+        return {
+            "wikimedia_incidents": 1.40,
+            "wikimedia_status": 1.25,
+            "wikimedia_runbooks": 0.85,
+            "upstream_official_docs": 0.75,
+            "external_postmortems": 0.80,
+        }.get(chunk.namespace, 1.0)
+    return 1.0
+
+
 def _scenario_text(scenario: Scenario) -> str:
     """把公开事故转换为保留来源和时间线的可检索文本。"""
     timeline = "\n".join(
@@ -192,10 +228,14 @@ class KnowledgeBaseStore:
         self._chunks: dict[str, list[_Chunk]] = {}
         self._uploaded_ids: OrderedDict[str, None] = OrderedDict()
         self._public_ids: set[str] = set()
+        self._scenario_ids: set[str] = set()
+        self._catalog_ids: set[str] = set()
         self._public_signature: tuple[tuple[str, str], ...] = ()
+        self._catalog_signature: tuple[tuple[str, str], ...] = ()
         self._lock = Lock()
         self._model_lock = Lock()
         self._embedding_model: TextEmbedding | None = None
+        self._embedding_cache: dict[str, tuple[float, ...]] = {}
         self._embedding_attempted = False
         self._embedding_error: str | None = None
         self._database_path: Path | None = None
@@ -342,9 +382,14 @@ class KnowledgeBaseStore:
         source_type: str,
         source_url: str | None,
         prefix: str,
+        namespace: str = "user_uploads",
+        organization: str = "用户",
+        authority_level: float = 1.0,
+        applicable_for_action: bool = False,
     ) -> list[_Chunk]:
         raw_chunks = _split_text(text)
-        embeddings = self._passage_embeddings(raw_chunks)
+        # 索引同步只做文本分块；向量在首次检索时按需生成，避免阻塞页面首屏。
+        embeddings: list[tuple[float, ...] | None] = [None] * len(raw_chunks)
         return [
             _Chunk(
                 chunk_id=f"{prefix}-{index:03d}",
@@ -352,6 +397,10 @@ class KnowledgeBaseStore:
                 document_name=document_name,
                 source_type=source_type,
                 source_url=source_url,
+                namespace=namespace,
+                organization=organization,
+                authority_level=authority_level,
+                applicable_for_action=applicable_for_action,
                 text=value,
                 tokens=_tokenize(value),
                 embedding=embeddings[index - 1],
@@ -392,7 +441,7 @@ class KnowledgeBaseStore:
         return document.model_copy(deep=True)
 
     def sync_scenarios(self, scenarios: list[Scenario]) -> None:
-        """以幂等方式同步多个官方状态页事故，不重复累积公开记录。"""
+        """以幂等方式同步 Wikimedia Status 事故，不重复累积公开记录。"""
         signature = tuple(
             (item.source_incident_id, item.fetched_at.isoformat()) for item in scenarios
         )
@@ -411,6 +460,10 @@ class KnowledgeBaseStore:
                 text=text,
                 source_type=f"{scenario.source_name} 真实事故",
                 source_url=scenario.source_url,
+                namespace="wikimedia_status",
+                organization="Wikimedia",
+                authority_level=1.0,
+                applicable_for_action=False,
                 prefix=f"S-{stable_id}",
             )
             prepared.append(
@@ -421,6 +474,10 @@ class KnowledgeBaseStore:
                         media_type="application/vnd.statuspage+json",
                         source_type=f"{scenario.source_name} 真实事故",
                         source_url=scenario.source_url,
+                        namespace="wikimedia_status",
+                        organization="Wikimedia",
+                        authority_level=1.0,
+                        applicable_for_action=False,
                         character_count=len(text),
                         chunk_count=len(chunks),
                         created_at=scenario.fetched_at,
@@ -429,19 +486,79 @@ class KnowledgeBaseStore:
                 )
             )
         with self._lock:
-            for document_id in self._public_ids:
+            for document_id in self._scenario_ids:
                 self._documents.pop(document_id, None)
                 self._chunks.pop(document_id, None)
-            self._public_ids = set()
+                self._public_ids.discard(document_id)
+            self._scenario_ids = set()
             for document, chunks in prepared:
                 self._documents[document.document_id] = document
                 self._chunks[document.document_id] = chunks
                 self._public_ids.add(document.document_id)
+                self._scenario_ids.add(document.document_id)
             self._public_signature = signature
+
+    def sync_public_documents(self, records: list[PublicKnowledgeRecord]) -> None:
+        """同步 Wikimedia 主域和低权重外部类比资料，并保留命名空间边界。"""
+        signature = tuple((item.key, hashlib.sha1(item.content.encode("utf-8")).hexdigest()) for item in records)
+        with self._lock:
+            if signature == self._catalog_signature:
+                return
+        prepared: list[tuple[KnowledgeDocument, list[_Chunk]]] = []
+        for record in records:
+            stable_id = hashlib.sha1(record.key.encode("utf-8")).hexdigest()[:16].upper()
+            document_id = f"PUBLIC-{stable_id}"
+            chunks = self._build_chunks(
+                document_id=document_id,
+                document_name=record.title,
+                text=record.content,
+                source_type=record.source_type,
+                source_url=record.source_url,
+                namespace=record.namespace,
+                organization=record.organization,
+                authority_level=record.authority_level,
+                applicable_for_action=record.applicable_for_action,
+                prefix=f"P-{stable_id}",
+            )
+            prepared.append(
+                (
+                    KnowledgeDocument(
+                        document_id=document_id,
+                        name=record.title,
+                        media_type=record.media_type,
+                        source_type=record.source_type,
+                        source_url=record.source_url,
+                        namespace=record.namespace,
+                        organization=record.organization,
+                        authority_level=record.authority_level,
+                        applicable_for_action=record.applicable_for_action,
+                        character_count=len(record.content),
+                        chunk_count=len(chunks),
+                    ),
+                    chunks,
+                )
+            )
+        with self._lock:
+            for document_id in self._catalog_ids:
+                self._documents.pop(document_id, None)
+                self._chunks.pop(document_id, None)
+                self._public_ids.discard(document_id)
+            self._catalog_ids = set()
+            for document, chunks in prepared:
+                self._documents[document.document_id] = document
+                self._chunks[document.document_id] = chunks
+                self._public_ids.add(document.document_id)
+                self._catalog_ids.add(document.document_id)
+            self._catalog_signature = signature
 
     def list(self) -> list[KnowledgeDocument]:
         with self._lock:
-            return [item.model_copy(deep=True) for item in reversed(self._documents.values())]
+            documents = [item.model_copy(deep=True) for item in self._documents.values()]
+        return sorted(
+            documents,
+            key=lambda item: (item.authority_level, item.organization == "Wikimedia", item.created_at),
+            reverse=True,
+        )
 
     def status(self) -> KnowledgeStatus:
         with self._lock:
@@ -451,25 +568,26 @@ class KnowledgeBaseStore:
             source_count = len(self._public_ids)
         dense_ready = self._embedding_model is not None
         if dense_ready:
-            retriever = "BM25 + BGE 中文向量 + RRF"
+            retriever = "BM25 + 多语言向量 + 权威度 RRF"
             mode = "混合检索 RAG"
         elif self._embedding_attempted:
             retriever = "BM25（向量通道已降级）"
             mode = "词法检索降级"
         else:
-            retriever = "BM25 + BGE 中文向量（准备中）"
+            retriever = "BM25 + 多语言向量（按需加载）"
             mode = "混合检索准备中"
         return KnowledgeStatus(
             document_count=len(documents),
             uploaded_document_count=upload_count,
             source_document_count=source_count,
             chunk_count=chunk_count,
-            supported_types=["PDF", "Markdown", "TXT", "官方 Statuspage JSON"],
+            supported_types=["PDF", "Markdown", "TXT", "Wikimedia Status JSON", "Wikitech 页面"],
             retriever=retriever,
             storage=self.storage_label,
             embedding_model=DENSE_MODEL_NAME if dense_ready else None,
             retrieval_mode=mode,
             source_types=sorted({item.source_type for item in documents}),
+            namespaces=sorted({item.namespace for item in documents}),
         )
 
     @property
@@ -509,10 +627,17 @@ class KnowledgeBaseStore:
         query_embedding = self._query_embedding(query)
         if query_embedding is None:
             return []
+        missing = [chunk for chunk in chunks if chunk.chunk_id not in self._embedding_cache]
+        if missing:
+            vectors = self._passage_embeddings([chunk.text for chunk in missing])
+            with self._lock:
+                for chunk, vector in zip(missing, vectors, strict=True):
+                    if vector is not None:
+                        self._embedding_cache[chunk.chunk_id] = vector
         scored = [
-            (_cosine_similarity(query_embedding, chunk.embedding), chunk)
+            (_cosine_similarity(query_embedding, self._embedding_cache[chunk.chunk_id]), chunk)
             for chunk in chunks
-            if chunk.embedding is not None
+            if chunk.chunk_id in self._embedding_cache
         ]
         scored = [item for item in scored if item[0] >= DENSE_MIN_SCORE]
         scored.sort(key=lambda item: item[0], reverse=True)
@@ -530,14 +655,16 @@ class KnowledgeBaseStore:
         # 两路召回的分数不在同一量纲，因此只用排名进行 RRF 融合。
         ranked_lists = [
             ("BM25 词法", self._bm25_ranking(query_tokens, chunks)),
-            ("BGE 中文向量", self._dense_ranking(query, chunks)),
+            ("多语言语义向量", self._dense_ranking(query, chunks)),
         ]
         fused_scores: dict[str, float] = {}
         candidates: dict[str, _Chunk] = {}
         signals: dict[str, list[str]] = {}
         for label, ranking in ranked_lists:
             for rank, chunk in enumerate(ranking, start=1):
-                fused_scores[chunk.chunk_id] = fused_scores.get(chunk.chunk_id, 0.0) + 1 / (
+                # 权威度不改变召回集合，只在融合阶段降权外部类比资料。
+                source_weight = max(0.20, chunk.authority_level) * _namespace_route_weight(query, chunk)
+                fused_scores[chunk.chunk_id] = fused_scores.get(chunk.chunk_id, 0.0) + source_weight / (
                     RRF_RANK_CONSTANT + rank
                 )
                 candidates[chunk.chunk_id] = chunk
@@ -551,6 +678,10 @@ class KnowledgeBaseStore:
                 document_name=candidates[chunk_id].document_name,
                 source_type=candidates[chunk_id].source_type,
                 source_url=candidates[chunk_id].source_url,
+                namespace=candidates[chunk_id].namespace,
+                organization=candidates[chunk_id].organization,
+                authority_level=candidates[chunk_id].authority_level,
+                applicable_for_action=candidates[chunk_id].applicable_for_action,
                 retrieval_signals=signals[chunk_id],
                 excerpt=candidates[chunk_id].text[:700],
                 relevance=min(1.0, fused_scores[chunk_id] / maximum),

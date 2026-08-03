@@ -52,7 +52,7 @@ def test_deepseek_response_is_validated_and_grounded():
         api_key="test-key",
         transport=httpx.MockTransport(handler),
     )
-    result = asyncio.run(client.analyze(SCENARIOS["github-sj1tzyrx599x"].request))
+    result = asyncio.run(client.analyze(SCENARIOS["wikimedia-wfdnbnv00w3r"].request))
 
     assert result.analysis_mode == "deepseek"
     assert result.model == "deepseek-v4-flash"
@@ -89,7 +89,7 @@ def test_dangerous_model_action_is_blocked():
         )
 
     client = DeepSeekClient(api_key="test-key", transport=httpx.MockTransport(handler))
-    result = asyncio.run(client.analyze(SCENARIOS["github-q27ttsnp0x4g"].request))
+    result = asyncio.run(client.analyze(SCENARIOS["wikimedia-ncw3k9b4ynz6"].request))
 
     assert result.recommendation.risk_level == RiskLevel.BLOCKED
     assert "阻断" in result.recommendation.action

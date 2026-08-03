@@ -2,7 +2,7 @@ from app.knowledge import KnowledgeBaseStore, SessionMemoryStore
 
 
 def test_dense_channel_recalls_semantically_related_chinese_question():
-    """措辞没有明显重叠时，BGE 中文向量仍应召回相关运行手册。"""
+    """措辞没有明显重叠时，多语言向量仍应召回相关运行手册。"""
     store = KnowledgeBaseStore(max_documents=2)
     store.add(
         "payment-runbook.md",
@@ -13,17 +13,18 @@ def test_dense_channel_recalls_semantically_related_chinese_question():
 
     assert results
     assert results[0].document_name == "payment-runbook.md"
-    assert "BGE 中文向量" in results[0].retrieval_signals
+    assert "多语言语义向量" in results[0].retrieval_signals
 
 
 def test_status_reports_truthful_hybrid_retrieval_components():
     store = KnowledgeBaseStore(max_documents=2)
     store.add("guide.txt", "服务故障处理指南".encode("utf-8"))
 
+    store.search("如何处理服务故障？")
     status = store.status()
 
     assert status.retrieval_mode == "混合检索 RAG"
-    assert status.embedding_model == "BAAI/bge-small-zh-v1.5"
+    assert status.embedding_model == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     assert "RRF" in status.retriever
 
 
