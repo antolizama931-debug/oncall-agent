@@ -141,6 +141,12 @@ function toolStageLabel(tool) {
     "telemetry.logs.search": "检索企业日志",
     "telemetry.traces.search": "查询链路追踪",
     "telemetry.changes.read": "读取最近变更",
+    "incident.read": "读取事故输入",
+    "knowledge.retrieve": "知识库 Agent 检索",
+    "knowledge.retrieve_broad": "扩大知识检索范围",
+    "telemetry.collect": "收集企业遥测",
+    "diagnosis.analyze": "生成根因假设",
+    "evidence.validate": "共享证据层校验",
   }[tool] || tool;
 }
 
@@ -211,7 +217,7 @@ function renderLanding() {
         <div class="hero-copy">
           <span class="eyebrow"><i></i> 真实事故响应运行时</span>
           <h1>让每一次故障，<span>都留下可验证的<br class="mobile-only-break"/>答案。</span></h1>
-          <p>OnCall Agent 接收告警、聚合证据、定位已知故障，并通过受策略约束的 Runbook 完成处置、验证、回滚和知识沉淀。</p>
+          <p>项目由知识库 Agent、对话 Agent 和运维 Agent 组成。三个 Agent 共用统一证据格式，让文档片段、工具结果和诊断结论都能被引用、检查和回放。</p>
           <div class="hero-buttons"><a class="button primary" href="#home">进入事故控制台 ${icon("arrow", 16)}</a><a class="button secondary" href="#incidents">查看真实事故</a></div>
           <div class="hero-footnote"><span>${icon("shield", 15)} 公开站仅执行安全演练</span><span>${icon("link", 15)} 每个判断和动作可追溯</span></div>
         </div>
@@ -220,13 +226,13 @@ function renderLanding() {
             <div class="runtime-bar"><span><i></i><i></i><i></i></span><b>Agent 运行轨迹</b><small>实时</small></div>
             <div class="runtime-incident"><span class="severity-badge sev1">SEV-1</span><div><small>事故回放</small><strong>云服务性能下降</strong></div><span class="source-chip">官方状态页</span></div>
             <div class="agent-flow">
-              <div class="flow-node active"><span>01</span><div><b>观察（Observe）</b><small>规范化公开信号</small></div><i></i></div>
+              <div class="flow-node active"><span>01</span><div><b>知识库 Agent</b><small>准备并检索故障知识</small></div><i></i></div>
               <div class="flow-line"></div>
-              <div class="flow-node active"><span>02</span><div><b>诊断（Diagnose）</b><small>排序可验证根因</small></div><i></i></div>
+              <div class="flow-node active"><span>02</span><div><b>对话 Agent</b><small>RAG + 受限 ReAct</small></div><i></i></div>
               <div class="flow-line"></div>
-              <div class="flow-node guarded"><span>03</span><div><b>处置与验证</b><small>审批 · 回滚 · 复盘</small></div><i></i></div>
+              <div class="flow-node guarded"><span>03</span><div><b>运维 Agent</b><small>Plan · Execute · Replan</small></div><i></i></div>
             </div>
-            <div class="runtime-result"><div><span>首要根因假设</span><strong>下游依赖服务性能下降</strong></div><b>74%</b></div>
+            <div class="runtime-result"><div><span>共享证据层</span><strong>来源、工具结果与结论可追踪</strong></div><b>可审计</b></div>
           </div>
           <div class="floating-card card-source"><span>${icon("database", 17)}</span><div><b>真实数据源</b><small>Wikimedia 官方数据</small></div></div>
           <div class="floating-card card-policy"><span>${icon("shield", 17)}</span><div><b>策略门控</b><small>低风险自动化边界</small></div></div>
@@ -236,18 +242,18 @@ function renderLanding() {
       <section class="proof-row shell">
         <div><strong>${state.dashboard?.incident_count ?? "—"}</strong><span>真实事故回放</span></div>
         <div><strong>${state.dashboard?.source_name || "Wikimedia"}</strong><span>主生产数据域</span></div>
-        <div><strong>8</strong><span>端到端工具阶段</span></div>
+        <div><strong>3</strong><span>核心 Agent</span></div>
         <div><strong>${state.dashboard?.recovered_count ?? 0}</strong><span>已验证闭环演练</span></div>
       </section>
 
       <section class="capability-section shell" id="capabilities">
-        <div class="section-heading"><div><span>OnCall 控制平面</span><h2>从告警进入，<br/>到恢复验证结束。</h2></div><p>目标是自动处理高频、标准化、低风险且可回滚的告警；未知事故自动收集证据并升级人工。</p></div>
+        <div class="section-heading"><div><span>三个核心 Agent</span><h2>知识准备、智能问答、<br/>故障排查各自负责。</h2></div><p>共享证据层只统一来源与引用；审批、演练和回滚作为可选安全扩展，不改变三个 Agent 的核心编排。</p></div>
         <div class="capability-grid">
-          <article class="cap-card violet"><div class="cap-icon">${icon("bell", 25)}</div><span>01 / 自动响应</span><h3>告警接收与去重</h3><p>受认证的 Webhook 接收企业告警，并按指纹去重；重复通知只更新发生次数，不重复启动调查。</p><footer>Alert → Incident ${icon("arrow", 15)}</footer></article>
-          <article class="cap-card orange"><div class="cap-icon">${icon("layers", 25)}</div><span>02 / 诊断推理</span><h3>证据约束诊断</h3><p>模型只能引用已编号证据；缺少区分性遥测时，系统明确降低置信度并请求补充数据。</p><footer>证据优先 ${icon("arrow", 15)}</footer></article>
-          <article class="cap-card blue"><div class="cap-icon">${icon("activity", 25)}</div><span>03 / 安全处置</span><h3>版本化 Runbook</h3><p>动作按风险分类；公开站只执行演练，企业连接器需要权限、审批、变更窗口和明确允许列表。</p><footer>策略约束执行 ${icon("arrow", 15)}</footer></article>
-          <article class="cap-card green"><div class="cap-icon">${icon("shield", 25)}</div><span>04 / 恢复验证</span><h3>验证失败自动回滚</h3><p>每次处置绑定恢复条件。指标不满足时停止继续执行、演练回滚步骤并升级人工。</p><footer>验证后才能关闭 ${icon("arrow", 15)}</footer></article>
-          <article class="cap-card rose"><div class="cap-icon">${icon("layers", 25)}</div><span>05 / 闭环沉淀</span><h3>待审核复盘候选</h3><p>自动整理证据、根因、动作和验证结果；审核通过后才允许进入正式知识库。</p><footer>越用越准，不污染知识库 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card violet"><div class="cap-icon">${icon("database", 25)}</div><span>01 / 知识库 Agent</span><h3>文档准备与检索</h3><p>负责文档上传、切分、索引、混合检索和来源排序，并把检索片段转换成可引用证据。</p><footer>文档 → 知识证据 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card orange"><div class="cap-icon">${icon("layers", 25)}</div><span>02 / 对话 Agent</span><h3>RAG + 受限 ReAct</h3><p>先判断需要查询什么，再调用登记工具观察结果；最多两次检索，最后生成带来源的回答。</p><footer>Reason → Action → Observation ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card blue"><div class="cap-icon">${icon("activity", 25)}</div><span>03 / 运维 Agent</span><h3>Plan-Execute-Replan</h3><p>先生成排查计划，再调用知识库和只读遥测工具；证据不足时调整计划，直到输出可验证结论。</p><footer>计划 → 执行 → 调整 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card green"><div class="cap-icon">${icon("shield", 25)}</div><span>04 / 共享证据层</span><h3>统一来源与引用</h3><p>统一文档片段、日志、指标和变更记录的编号与来源，拒绝引用不存在的证据。</p><footer>三个 Agent 共用 ${icon("arrow", 15)}</footer></article>
+          <article class="cap-card rose"><div class="cap-icon">${icon("bell", 25)}</div><span>05 / 可选安全扩展</span><h3>审批与处置演练</h3><p>告警去重、人工审批、恢复验证和复盘审核保留为外围能力；公开站不会执行生产写操作。</p><footer>不扩大 Agent 权限 ${icon("arrow", 15)}</footer></article>
         </div>
       </section>
 
@@ -258,9 +264,9 @@ function renderLanding() {
       </div></section>
 
       <section class="architecture-section shell" id="architecture">
-        <div class="section-heading"><div><span>执行模型</span><h2>八个工具阶段，<br/>形成完整处置闭环。</h2></div><p>调查、授权、执行和知识发布相互分离。每个阶段都有输入、输出、状态和审计记录。</p></div>
+        <div class="section-heading"><div><span>整体架构</span><h2>四层结构，<br/>三个核心 Agent。</h2></div><p>接入层提供 API；业务层编排三个 Agent；服务层提供检索、模型和工具原子能力；存储层保存知识、记忆和证据记录。</p></div>
         <div class="architecture-flow">
-          ${["alert.receive","evidence.normalize","diagnosis.rank","citations.validate","policy.gate","runbook.execute","remediation.validate","knowledge.draft"].map((item, index) => `<div class="arch-node"><span>${String(index + 1).padStart(2, "0")}</span><b>${item}</b><small>${["接收去重","规范证据","排序假设","验证引用","风险决策","执行处置","验证回滚","复盘候选"][index]}</small></div>${index < 7 ? '<i>→</i>' : ''}`).join("")}
+          ${["api.access","knowledge.agent","conversation.agent","operations.agent","evidence.shared","storage"].map((item, index) => `<div class="arch-node"><span>${String(index + 1).padStart(2, "0")}</span><b>${item}</b><small>${["接入层","知识准备","问答编排","运维排查","证据校验","知识与运行记录"][index]}</small></div>${index < 5 ? '<i>→</i>' : ''}`).join("")}
         </div>
       </section>
 
@@ -457,10 +463,10 @@ function renderWorkbench(scenario, run = null) {
         <footer><span>${icon("layers", 15)} 端到端执行图</span><span>${icon("shield", 15)} 公开站仅执行安全演练</span></footer>
       </section>
       <aside class="investigation-panel">
-        <header class="panel-head"><div><span class="panel-agent-mark">OC</span><div><h2>OnCall Agent</h2><p>证据约束型运行时</p></div></div><a href="#home" aria-label="关闭">${icon("x", 18)}</a></header>
+        <header class="panel-head"><div><span class="panel-agent-mark">OC</span><div><h2>运维 Agent</h2><p>Plan-Execute-Replan · 共享证据约束</p></div></div><a href="#home" aria-label="关闭">${icon("x", 18)}</a></header>
         <nav class="panel-tabs"><button class="active">调查</button><button>证据</button><button>动作</button><button>边界</button></nav>
         <section class="incident-summary"><div class="summary-top"><span class="severity-badge ${severityClass(severity)}">${severity}</span><span class="run-state ${currentStatus}">${statusLabel(currentStatus)}</span></div><h3 id="panel-title"></h3><div class="summary-facts"><span>${icon("database", 14)} <b id="panel-service"></b></span><span>${icon("clock", 14)} ${formatDate(run?.created_at || scenario?.started_at)}</span></div>${(run?.source_url || scenario?.source_url) ? `<a class="source-link" href="${run?.source_url || scenario?.source_url}" target="_blank" rel="noopener noreferrer">查看原始事故 ${icon("external", 13)}</a>` : ""}</section>
-        <div class="panel-scroll"><section class="agent-steps"><header><span>Agent 执行循环</span><small>${run ? `${run.tool_calls.length} 个工具阶段` : "准备就绪"}</small></header><div id="agent-steps"></div></section><section id="analysis-output"></section></div>
+        <div class="panel-scroll"><section class="agent-steps"><header><span>Plan-Execute-Replan</span><small>${run ? `${run.plan?.steps?.length || run.tool_calls.length} 个计划步骤 · 调整 ${run.plan?.replan_count || 0} 次` : "准备就绪"}</small></header><div id="agent-steps"></div></section><section id="analysis-output"></section></div>
         <footer class="panel-actions" id="panel-actions"></footer>
       </aside>
     </main></div></div>`;
@@ -474,7 +480,7 @@ function renderWorkbench(scenario, run = null) {
 
 function renderScenarioDetails(scenario) {
   const path = document.querySelector("#graph-path");
-  ["读取事故", "规范化证据", "诊断根因", "校验引用", "安全门控", "执行处置", "恢复验证", "复盘候选"].forEach((label, index) => {
+  ["读取事故", "查询知识库", "收集遥测", "生成诊断", "校验证据"].forEach((label, index) => {
     const item = node("div", `graph-tool pending tool-${index + 1}`);
     item.innerHTML = `<span>0${index + 1}</span><div><b>${label}</b><small>等待执行</small></div><i></i>`;
     path.append(item);
@@ -499,7 +505,7 @@ function renderScenarioDetails(scenario) {
     steps.append(row);
   });
   const output = document.querySelector("#analysis-output");
-  output.innerHTML = `<div class="ready-card"><span>${icon("activity", 20)}</span><div><strong>已加载真实事故时间线</strong><p>启动后，Agent 先执行五个只读调查阶段；批准 Runbook 后才进入处置演练、验证和复盘阶段。</p></div></div>`;
+  output.innerHTML = `<div class="ready-card"><span>${icon("activity", 20)}</span><div><strong>已加载真实事故时间线</strong><p>启动后，运维 Agent 先制定计划，再调用知识库和只读工具；证据不足时会调整计划，最后校验引用并输出结论。</p></div></div>`;
   const actions = document.querySelector("#panel-actions");
   const button = node("button", "run-agent-button");
   button.innerHTML = `${icon("pulse", 17)} 启动 OnCall Agent <span>→</span>`;

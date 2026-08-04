@@ -102,11 +102,22 @@ class IncidentRequest(BaseModel):
 
 
 class Evidence(BaseModel):
+    """A normalized observation shared by all three agents.
+
+    ``statement`` keeps backward compatibility with persisted public demo runs.
+    The additional fields record provenance without turning a model hypothesis
+    into an observation.
+    """
+
     evidence_id: str
     source: str
     statement: str
     relevance: float = Field(ge=0.0, le=1.0)
     observed_at: datetime | None = None
+    evidence_type: str = "observation"
+    source_url: str | None = None
+    collected_by: str = "shared-evidence-layer"
+    content_hash: str | None = None
 
 
 class Hypothesis(BaseModel):
@@ -192,6 +203,24 @@ class ToolCall(BaseModel):
     output_summary: str
     read_only: bool = True
     duration_ms: int = Field(ge=0)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class AgentPlanStep(BaseModel):
+    """One bounded step produced by the operations Agent planner."""
+
+    step_id: str
+    tool: str
+    purpose: str
+    status: str = Field(default="pending", pattern="^(pending|running|succeeded|failed|skipped)$")
+
+
+class AgentPlan(BaseModel):
+    """Observable Plan-Execute-Replan state exposed for replay."""
+
+    goal: str
+    steps: list[AgentPlanStep]
+    replan_count: int = Field(default=0, ge=0)
 
 
 class RunbookStep(BaseModel):
@@ -289,6 +318,8 @@ class AgentRun(BaseModel):
     status: RunStatus
     tool_calls: list[ToolCall]
     analysis: IncidentAnalysis
+    agent_name: str = "运维 Agent"
+    plan: AgentPlan | None = None
     runbook: RunbookPlan | None = None
     approval: ApprovalRecord | None = None
     execution: RemediationExecution | None = None

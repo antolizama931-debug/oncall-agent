@@ -15,10 +15,10 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
+from .agents import ConversationAgent, KnowledgeAgent, OperationsAgent
 from .alerts import AlertInboxStore
 from .connectors import EnterpriseToolGateway
 from .deepseek import DeepSeekClient, DeepSeekError
-from .engine import analyze_incident
 from .models import (
     AgentRun,
     AgentRunRequest,
@@ -41,6 +41,7 @@ from .models import (
 )
 from .runtime import AgentRunStore
 from .knowledge import KnowledgeBaseStore, MAX_FILE_BYTES, SessionMemoryStore
+from .evidence import shared_evidence_layer
 from .statuspage import MultiStatusClient
 from .public_sources import (
     EXTERNAL_ANALOGIES,
@@ -109,19 +110,36 @@ knowledge_store = KnowledgeBaseStore(
     max_documents=int(os.getenv("ONCALL_MAX_DOCUMENTS", "50")),
     data_dir=DATA_DIR,
 )
-# 外部事故只作为低权重类比。同步过程不访问网络，也不会阻塞启动。
-knowledge_store.sync_public_documents([*UPSTREAM_OFFICIAL_REFERENCES, *EXTERNAL_ANALOGIES])
 memory_store = SessionMemoryStore(
     max_sessions=int(os.getenv("ONCALL_MAX_SESSIONS", "100")),
     recent_messages=int(os.getenv("ONCALL_MEMORY_RECENT_MESSAGES", "8")),
     summary_max_chars=int(os.getenv("ONCALL_MEMORY_SUMMARY_CHARS", "2400")),
     context_max_chars=int(os.getenv("ONCALL_CONTEXT_MAX_CHARS", "12000")),
 )
+knowledge_agent = KnowledgeAgent(knowledge_store, shared_evidence_layer)
+# 外部事故只作为低权重类比。同步过程不访问网络，也不会阻塞启动。
+knowledge_agent.sync_public_documents([*UPSTREAM_OFFICIAL_REFERENCES, *EXTERNAL_ANALOGIES])
+conversation_agent = ConversationAgent(
+    knowledge_agent=knowledge_agent,
+    memory_store=memory_store,
+    evidence_layer=shared_evidence_layer,
+    deepseek_client=deepseek_client,
+    model_name=DEEPSEEK_MODEL,
+    allow_fallback=ALLOW_RULE_FALLBACK,
+)
+operations_agent = OperationsAgent(
+    knowledge_agent=knowledge_agent,
+    evidence_layer=shared_evidence_layer,
+    tool_gateway=tool_gateway,
+    deepseek_client=deepseek_client,
+    model_name=DEEPSEEK_MODEL,
+    allow_fallback=ALLOW_RULE_FALLBACK,
+)
 
 app = FastAPI(
     title="OnCall Agent API",
-    version="0.6.0",
-    description="具备告警接入、诊断、Runbook 审批、处置演练、验证回滚与知识沉淀的 OnCall Agent。",
+    version="0.7.0",
+    description="由知识库 Agent、对话 Agent、运维 Agent 和共享证据层组成的 OnCall 系统。",
 )
 
 # Same-origin deployment does not need CORS. Localhost origins are allowed only for
@@ -195,6 +213,7 @@ def health() -> dict[str, str | bool | int]:
         "tool_gateway_configured": tool_gateway.configured,
         "knowledge_document_count": knowledge_store.status().document_count,
         "memory_session_count": memory_store.count(),
+        "agent_architecture": "知识库 Agent + 对话 Agent + 运维 Agent",
     }
 
 
@@ -214,9 +233,9 @@ async def _sync_knowledge_sources() -> KnowledgeStatus:
         status_client.get_scenarios(),
         wikimedia_knowledge_client.get_documents(),
     )
-    knowledge_store.sync_scenarios(scenarios)
-    knowledge_store.sync_public_documents(documents)
-    return knowledge_store.status().model_copy(
+    knowledge_agent.sync_scenarios(scenarios)
+    knowledge_agent.sync_public_documents(documents)
+    return knowledge_agent.status().model_copy(
         update={
             "sync_mode": wikimedia_knowledge_client.last_mode,
             "sync_error": wikimedia_knowledge_client.last_error,
@@ -234,30 +253,12 @@ async def get_scenario(key: str) -> Scenario:
 
 
 async def _analyze_payload(payload: IncidentRequest) -> IncidentAnalysis:
-    """Use the configured model, with an explicit deterministic fallback."""
-    if deepseek_client is not None:
-        try:
-            return await deepseek_client.analyze(payload)
-        except DeepSeekError as exc:
-            if not ALLOW_RULE_FALLBACK:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="DeepSeek analysis is temporarily unavailable.",
-                ) from exc
-            result = analyze_incident(payload)
-            result.analysis_mode = "deterministic-fallback"
-            result.model = DEEPSEEK_MODEL
-            result.limitations.append(
-                "DeepSeek was temporarily unavailable; deterministic fallback analysis was used."
-            )
-            return result
-
-    result = analyze_incident(payload)
-    result.analysis_mode = "deterministic-unconfigured"
-    result.limitations.append(
-        "DEEPSEEK_API_KEY is not configured; deterministic analysis was used."
-    )
-    return result
+    """Run the operations Agent without an enterprise gateway side effect."""
+    try:
+        result = await operations_agent.investigate(payload, use_gateway=False)
+    except DeepSeekError as exc:
+        raise HTTPException(status_code=502, detail="DeepSeek analysis is temporarily unavailable") from exc
+    return result.analysis
 
 
 @app.post("/api/analyze", response_model=IncidentAnalysis)
@@ -295,16 +296,20 @@ async def create_run(payload: AgentRunRequest) -> AgentRun:
         incident = scenario.request
     if incident is None:  # Defensive; Pydantic already enforces this invariant.
         raise HTTPException(status_code=422, detail="必须提供事故输入")
-    investigation_tools = []
-    if scenario is None:
-        incident, investigation_tools = await tool_gateway.collect(incident)
-    analysis = await _analyze_payload(incident)
+    try:
+        agent_result = await operations_agent.investigate(
+            incident,
+            use_gateway=scenario is None,
+        )
+    except DeepSeekError as exc:
+        raise HTTPException(status_code=502, detail="DeepSeek analysis is temporarily unavailable") from exc
     return run_store.create(
-        request=incident,
-        analysis=analysis,
+        request=agent_result.request,
+        analysis=agent_result.analysis,
         session_id=payload.session_id,
         scenario=scenario,
-        investigation_tools=investigation_tools,
+        agent_tool_calls=agent_result.tool_calls,
+        plan=agent_result.plan,
     )
 
 
@@ -402,13 +407,16 @@ async def ingest_enterprise_alert(
         source_name=payload.source,
         source_incident_id=receipt.event_id,
     )
-    incident, investigation_tools = await tool_gateway.collect(incident)
-    analysis = await _analyze_payload(incident)
+    try:
+        agent_result = await operations_agent.investigate(incident, use_gateway=True)
+    except DeepSeekError as exc:
+        raise HTTPException(status_code=502, detail="DeepSeek analysis is temporarily unavailable") from exc
     run = run_store.create(
-        request=incident,
-        analysis=analysis,
+        request=agent_result.request,
+        analysis=agent_result.analysis,
         session_id=f"alert:{receipt.fingerprint}",
-        investigation_tools=investigation_tools,
+        agent_tool_calls=agent_result.tool_calls,
+        plan=agent_result.plan,
     )
     alert_store.link_run(receipt.fingerprint, run.run_id)
     receipt.run_id = run.run_id
@@ -417,7 +425,7 @@ async def ingest_enterprise_alert(
 
 @app.get("/api/knowledge/status", response_model=KnowledgeStatus)
 def knowledge_status() -> KnowledgeStatus:
-    return knowledge_store.status().model_copy(
+    return knowledge_agent.status().model_copy(
         update={
             "sync_mode": wikimedia_knowledge_client.last_mode,
             "sync_error": wikimedia_knowledge_client.last_error,
@@ -432,7 +440,7 @@ async def sync_knowledge() -> KnowledgeStatus:
 
 @app.get("/api/knowledge/documents", response_model=list[KnowledgeDocument])
 def list_knowledge_documents() -> list[KnowledgeDocument]:
-    return knowledge_store.list()
+    return knowledge_agent.documents()
 
 
 @app.post("/api/knowledge/documents", response_model=KnowledgeDocument, status_code=status.HTTP_201_CREATED)
@@ -443,7 +451,7 @@ async def upload_knowledge_document(file: UploadFile = File(...)) -> KnowledgeDo
     finally:
         await file.close()
     try:
-        return knowledge_store.add(file.filename or "document", data)
+        return knowledge_agent.add_document(file.filename or "document", data)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -460,71 +468,10 @@ def clear_session(session_id: str) -> dict[str, bool]:
 
 @app.post("/api/chat", response_model=KnowledgeChatResponse)
 async def knowledge_chat(payload: KnowledgeChatRequest) -> KnowledgeChatResponse:
-    citations = knowledge_store.search(payload.question, top_k=payload.top_k)
-    memory_context = memory_store.context(payload.session_id)
-    status_snapshot = knowledge_store.status()
-    trace = [
-        "问题识别：知识库问答",
-        f"数据源路由：Wikimedia 主域优先，共 {len(status_snapshot.namespaces)} 个隔离命名空间",
-        f"混合检索：召回 {len(citations)} 个相关分块",
-        "RRF 融合：合并 BM25 与多语言语义排名，并按来源权威度重排",
-        (
-            "会话记忆：滚动摘要"
-            f"（{memory_context.summarized_message_count} 条已压缩）+ "
-            f"{len(memory_context.recent_messages)} 条近期原文"
-        ),
-        f"上下文预算：最多 {memory_store.context_max_chars:,} 个字符",
-    ]
-    usage = None
-    if deepseek_client is not None:
-        try:
-            answer, usage = await deepseek_client.answer_question(
-                question=payload.question,
-                citations=citations,
-                history=memory_context.recent_messages,
-                history_summary=memory_context.summary,
-            )
-            analysis_mode = "deepseek-rag" if citations else "deepseek-general"
-            trace.append("答案生成：DeepSeek 已返回响应")
-        except DeepSeekError:
-            if not ALLOW_RULE_FALLBACK:
-                raise HTTPException(status_code=502, detail="DeepSeek answer is temporarily unavailable")
-            answer = _knowledge_fallback(citations)
-            analysis_mode = "retrieval-fallback"
-            trace.append("答案生成：已使用确定性降级结果")
-    else:
-        answer = _knowledge_fallback(citations)
-        analysis_mode = "retrieval-unconfigured"
-        trace.append("答案生成：模型未配置，返回检索原文")
-    updated_memory = memory_store.append_exchange(payload.session_id, payload.question, answer)
-    if citations and all(not item.applicable_for_action for item in citations):
-        trace.append("安全校验：当前证据不可直接用于生产操作，处置动作需要 Wikimedia Runbook 支持")
-    else:
-        trace.append("安全校验：答案仅保留可追踪知识片段，生产动作仍需人工审批")
-    trace.append("会话写入：近期原文保存在进程内存，较早消息进入有界滚动摘要")
-    return KnowledgeChatResponse(
-        answer=answer,
-        session_id=payload.session_id,
-        citations=citations,
-        trace=trace,
-        analysis_mode=analysis_mode,
-        model=DEEPSEEK_MODEL if deepseek_client is not None else None,
-        usage=usage,
-        memory_turns=updated_memory.total_turns,
-        memory_summary_active=bool(updated_memory.summary),
-        memory_recent_messages=len(updated_memory.recent_messages),
-        memory_clipped=updated_memory.clipped,
-    )
-
-
-def _knowledge_fallback(citations):
-    if not citations:
-        return "当前知识库没有召回足以回答该问题的内容。你可以换一种问法，或上传相关 PDF、Markdown、TXT 文档。"
-    excerpts = "\n\n".join(
-        f"[{item.citation_id}] {item.document_name}: {item.excerpt[:320]}"
-        for item in citations[:3]
-    )
-    return f"模型当前不可用。以下是检索到的原文片段，请据此核对：\n\n{excerpts}"
+    try:
+        return await conversation_agent.answer(payload)
+    except DeepSeekError as exc:
+        raise HTTPException(status_code=502, detail="DeepSeek answer is temporarily unavailable") from exc
 
 
 if not FRONTEND_DIR.is_dir():

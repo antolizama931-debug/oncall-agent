@@ -12,6 +12,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 
+from .evidence import shared_evidence_layer
 from .models import (
     Evidence,
     Hypothesis,
@@ -101,49 +102,6 @@ def _make_incident_id(request: IncidentRequest) -> str:
     return f"INC-{digest}"
 
 
-def _build_evidence(request: IncidentRequest) -> list[Evidence]:
-    report_source = "user_report"
-    if request.source_name and request.source_incident_id:
-        report_source = f"{request.source_name.lower().replace(' ', '_')}:{request.source_incident_id}"
-    evidence = [
-        Evidence(
-            evidence_id="E-001",
-            source=report_source,
-            statement=request.description,
-            relevance=0.72,
-        )
-    ]
-    if request.change_event:
-        evidence.append(
-            Evidence(
-                evidence_id=f"E-{len(evidence) + 1:03d}",
-                source="change_event",
-                statement=request.change_event,
-                relevance=0.84,
-            )
-        )
-    for signal in request.signals:
-        evidence.append(
-            Evidence(
-                evidence_id=f"E-{len(evidence) + 1:03d}",
-                source=f"{signal.kind.value}:{signal.source}",
-                statement=f"{signal.name}: {signal.value}",
-                relevance=0.78,
-                observed_at=signal.timestamp,
-            )
-        )
-    for artifact in request.artifacts:
-        evidence.append(
-            Evidence(
-                evidence_id=f"E-{len(evidence) + 1:03d}",
-                source=f"artifact:{artifact.name}",
-                statement=artifact.content,
-                relevance=0.74,
-            )
-        )
-    return evidence
-
-
 def _score_rule(rule: DiagnosticRule, text: str, evidence_count: int) -> tuple[int, list[str]]:
     matched = [keyword for keyword in rule.keywords if keyword in text]
     # Multiple independent observations increase confidence, but cannot replace a keyword match.
@@ -226,7 +184,7 @@ def _build_recommendation(request: IncidentRequest, hypotheses: list[Hypothesis]
 
 def analyze_incident(request: IncidentRequest) -> IncidentAnalysis:
     """Run the observable, deterministic analysis pipeline."""
-    evidence = _build_evidence(request)
+    evidence = shared_evidence_layer.from_incident(request)
     hypotheses = _rank_hypotheses(request, evidence)
     recommendation = _build_recommendation(request, hypotheses)
     primary = hypotheses[0]
