@@ -96,12 +96,15 @@ def test_agent_run_records_tools_and_requires_non_executing_approval():
     assert run["status"] == "awaiting-approval"
     assert run["display_title"]
     assert [item["tool"] for item in run["tool_calls"]] == [
-        "statuspage.read",
-        "evidence.normalize",
-        "diagnosis.rank",
-        "citations.validate",
-        "policy.gate",
+        "incident.read",
+        "knowledge.retrieve",
+        "diagnosis.analyze",
+        "evidence.validate",
     ]
+    assert run["agent_name"] == "运维 Agent"
+    assert run["plan"]["goal"]
+    assert all(item["status"] == "succeeded" for item in run["plan"]["steps"])
+    assert run["tool_calls"][-1]["evidence_ids"]
     assert all(item["read_only"] is True for item in run["tool_calls"])
 
     listed = asyncio.run(request("GET", f"/api/runs?session_id={session_id}"))

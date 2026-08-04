@@ -11,6 +11,7 @@ from threading import Lock
 
 from .automation import build_knowledge_candidate, execute_drill, select_runbook
 from .models import (
+    AgentPlan,
     AgentRun,
     ApprovalRecord,
     ApprovalRequest,
@@ -176,6 +177,8 @@ class AgentRunStore:
         session_id: str,
         scenario: Scenario | None = None,
         investigation_tools: list[ToolCall] | None = None,
+        agent_tool_calls: list[ToolCall] | None = None,
+        plan: AgentPlan | None = None,
     ) -> AgentRun:
         now = datetime.now(timezone.utc)
         run_id = f"RUN-{secrets.token_hex(4).upper()}"
@@ -190,12 +193,17 @@ class AgentRunStore:
             source_name=request.source_name,
             source_url=request.source_url,
             status=_run_status(analysis),
-            tool_calls=_tool_calls(
-                analysis,
-                source_name=scenario.source_name if scenario else request.source_name,
-                investigation_tools=investigation_tools,
+            tool_calls=(
+                agent_tool_calls
+                if agent_tool_calls is not None
+                else _tool_calls(
+                    analysis,
+                    source_name=scenario.source_name if scenario else request.source_name,
+                    investigation_tools=investigation_tools,
+                )
             ),
             analysis=analysis,
+            plan=plan,
             runbook=select_runbook(analysis),
             created_at=now,
             updated_at=now,
