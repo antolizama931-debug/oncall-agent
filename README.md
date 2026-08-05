@@ -20,7 +20,7 @@
 - 强化：证据与假设分离、告警去重、版本化 Runbook、人工审批、恢复验证、回滚和知识审核；
 - 拒绝迁移：随机生成的指标、Mock 日志、未经资源限定的 Shell 命令，以及未经审核的自动知识发布。
 
-**Railway 公网地址：** https://oncall-agent-production-4c9c.up.railway.app
+**Railway 公网地址：** [https://oncall-agent-production-4c9c.up.railway.app](https://oncall-agent-production-b224.up.railway.app/#landing#architecture)
 
 ## 产品界面
 
